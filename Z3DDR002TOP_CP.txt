@@ -1,0 +1,351 @@
+*&---------------------------------------------------------------------*
+*& Include Z3DDR002TOP                                                 *
+*&                                                                     *
+*&---------------------------------------------------------------------*
+PROGRAM z3ddr002.
+TYPE-POOLS: slis.
+
+TABLES: vimimv.
+
+* Alteração - Gabriel - 18/09/09
+
+*CONSTANTS: start_date TYPE sy-datum VALUE '20061101'.
+DATA: start_date TYPE sy-datum.
+
+* Fim Alteração - Gabriel - 18/09/09
+
+DATA: w_zcondsnapshots TYPE zcondsnapshots,
+*      w_vimimv         TYPE vimimv,
+      w_vzzkopo        TYPE vzzkopo,
+      w_vikoko         TYPE vikoko.
+
+DATA: BEGIN OF w_conds,
+        intreno  LIKE vimimv-intreno,
+        skoart   LIKE vzzkopo-skoart,
+        dguel_kp LIKE vzzkopo-dguel_kp,
+        ammrhy   LIKE vzzkopo-ammrhy,
+        bkond    LIKE vzzkopo-bkond,
+        ammrhyv  LIKE vikoko-ammrhy,
+        jbmonat  LIKE vikoko-jbmonat,
+      END OF w_conds.
+
+DATA: w_conds_last LIKE w_conds,
+      w_zcondsnapshots_aux LIKE w_zcondsnapshots.
+
+DATA: BEGIN OF w_vimimv,
+        intreno  LIKE vimimv-intreno,
+        bukrs    LIKE vimimv-bukrs,
+        swenr    LIKE vimimv-swenr,
+        smive    LIKE vimimv-smive,
+        smenr    LIKE vimimv-smenr,
+        zznmfan  LIKE vimimv-zznmfan,
+        dbear    LIKE vimimv-dbear,
+        derf     LIKE vimimv-derf,
+        dmibeg   LIKE vimimv-dmibeg,
+        dmiend   LIKE vimimv-dmiend,
+        DKUEZU   like vimimv-DKUEZU,
+      END OF w_vimimv.
+
+DATA: BEGIN OF w_cond_monthly_value,
+        intreno     LIKE vimimv-intreno,
+        monat(2)    TYPE n,
+        gjahr(4)    TYPE n,
+        skoart      LIKE vzzkopo-skoart,
+        max_days(2) TYPE n,
+        bkond       LIKE vzzkopo-bkond,
+        szbmeth     LIKE vikoko-szbmeth,
+      END OF w_cond_monthly_value.
+
+DATA: w_cond_monthly_value_aux LIKE w_cond_monthly_value.
+
+DATA: BEGIN OF w_monthly_tot,
+        intreno  LIKE vimimv-intreno,
+        monat(2) TYPE n,
+        gjahr(4) TYPE n,
+        bkond    LIKE vzzkopo-bkond,
+      END OF w_monthly_tot.
+
+DATA: BEGIN OF w_jbmonat,
+        intreno  LIKE vimimv-intreno,
+        monat(2) TYPE n,
+        gjahr(4) TYPE n,
+        bkond   LIKE vzzkopo-bkond,
+      END OF w_jbmonat.
+
+DATA: BEGIN OF w_total_old,
+        intreno LIKE vimimv-intreno,
+        bkond   LIKE vzzkopo-bkond,
+      END OF w_total_old.
+
+DATA: w_total_old_aux          LIKE w_total_old,
+      gc_valor_inicial_mes     LIKE vzzkopo-bkond,
+      gc_valor_inicial_mes_400 LIKE vzzkopo-bkond,
+      gc_vlr_perc_mes          LIKE vzzkopo-bkond.
+
+DATA: BEGIN OF w_total,
+        intreno  LIKE vimimv-intreno,
+        bukrs    LIKE vimimv-bukrs,
+        swenr    LIKE vimimv-swenr,
+        smive    LIKE vimimv-smive,
+        smenr    LIKE vimimv-smenr,
+        zznmfan  LIKE vimimv-zznmfan,
+        alt      TYPE c,
+        dmibeg   LIKE vimimv-dmibeg,
+        dmiend   LIKE vimimv-dmiend,
+        last_act LIKE sy-datum,
+        p_date_n LIKE sy-datum,
+        bkond    LIKE vzzkopo-bkond,
+        monat(4) TYPE n,
+        linear   LIKE vzzkopo-bkond,
+        delta    LIKE vzzkopo-bkond,
+        control  LIKE vzzkopo-bkond,
+        color(4) TYPE c,
+      END OF w_total.
+
+data: begin of gh_geral occurs 0,
+        smive        like vimimv-smive,
+        data         like sy-datum,
+        item(4)      type c,
+        valor_linha1 like vzzkopo-bkond,
+        valor_linha2 like vzzkopo-bkond,
+        valor_linha3 like vzzkopo-bkond,
+        dia(2)       type c,
+        end of gh_geral,
+
+      begin of gh_geral_0400 occurs 0,
+        smive        like vimimv-smive,
+        data         like sy-datum,
+        item(4)      type c,
+        valor_linha1 like vzzkopo-bkond,
+        valor_linha2 like vzzkopo-bkond,
+        valor_linha3 like vzzkopo-bkond,
+        dia(2)       type c,
+      end of gh_geral_0400,
+
+      begin of gh_geral_0400_aux occurs 0,
+        smive        like vimimv-smive,
+        data         like sy-datum,
+        item(4)      type c,
+        valor_linha1 like vzzkopo-bkond,
+        valor_linha2 like vzzkopo-bkond,
+        valor_linha3 like vzzkopo-bkond,
+        dia(2)       type c,
+      end of gh_geral_0400_aux,
+
+      begin of gh_geral_aux1  occurs 0,
+        smive        like vimimv-smive,
+        data         like sy-datum,
+        item(4)      type c,
+        valor_linha1 like vzzkopo-bkond,
+        valor_linha2 like vzzkopo-bkond,
+        valor_linha3 like vzzkopo-bkond,
+        dia(2)       type c,
+      end of gh_geral_aux1,
+
+      begin of gh_geral_aux2  occurs 0,
+        smive        like vimimv-smive,
+        data         like sy-datum,
+        item(4)      type c,
+        valor_linha1 like vzzkopo-bkond,
+        valor_linha2 like vzzkopo-bkond,
+        valor_linha3 like vzzkopo-bkond,
+        dia(2)       type c,
+      end of gh_geral_aux2.
+
+
+data: begin of gh_geral_aux occurs 0,
+       data         like sy-datum,
+       item(4)      type c,
+       valor_linha1 like vzzkopo-bkond,
+      end of gh_geral_aux.
+
+DATA: t_zcondsnapshots     LIKE TABLE OF w_zcondsnapshots,
+      t_zcondsnapshots_old LIKE TABLE OF w_zcondsnapshots,
+      t_vimimv             LIKE TABLE OF w_vimimv,
+      t_conds              LIKE TABLE OF w_conds,
+      t_conds_aux          LIKE TABLE OF w_conds,
+      t_conds_to_charge    LIKE TABLE OF w_conds,
+      t_cond_monthly_value LIKE TABLE OF w_cond_monthly_value,
+      t_monthly            LIKE TABLE OF w_cond_monthly_value,
+      t_total_old          LIKE TABLE OF w_total_old,
+      t_total_new          LIKE TABLE OF w_total_old,
+      t_total              LIKE TABLE OF w_total,
+      t_jbmonat            LIKE TABLE OF w_jbmonat,
+      t_monthly_tot        LIKE TABLE OF w_monthly_tot,
+      lc_indproz           LIKE t094p-indproz,
+      lc_indproz_old       LIKE t094p-indproz,
+      lc_ano               LIKE bseg-gjahr,
+      lc_percentual        LIKE t504s-prcnt,
+      gc_total_bkond       like vzzkopo-bkond,
+      gc_valor_percentual like vzzkopo-bkond,
+      gc_valor_anterior   like vzzkopo-bkond,
+      gc_valor_total_prc  like vzzkopo-bkond,
+      gc_valor_percentual1 like vzzkopo-bkond,
+      gc_valor_percentual_ like vzzkopo-bkond,
+       gc_valor_geral      like vzzkopo-bkond,
+      gc_vlr_prc_vl       like vzzkopo-bkond,
+      gc_leitura          like vzzkopo-bkond,
+      gc_valor_12         like vzzkopo-bkond,
+      gc_media            like vzzkopo-bkond,
+      gc_contador         type i,
+      gi_tabix            type sy-tabix,
+      gc_vez1,
+      gc_percentual(7)    type c,
+      gc_soma_ano(4)      type c,
+      gc_data_ano_d       like sy-datum,
+      gc_controla_12,
+      gc_sinal(17)        type c,
+      gc_p,
+      gc_seq              type i,
+      gc_cond_mist.
+
+
+data: begin of gh_vimi55 occurs 0,
+       INTRENO  like vimi55-INTRENO,
+       SKOART   like vimi55-SKOART,
+       DGABANRT like vimi55-DGABANRT,
+       sindart  like vimi55-sindart,
+       DANPAB   LIKE VIMI55-DANPAB,
+       DANPLETZ LIKE VIMI55-DANPLETZ,
+       DANPNXT  like vimi55-DANPNXT, "Data do próximo reajuste aluguel
+       BINDDAT1 like vimi55-BINDDAT1,
+      end of gh_vimi55,
+
+      begin of gh_vimi55_aux occurs 0,
+       INTRENO  like vimi55-INTRENO,
+       SKOART   like vimi55-SKOART,
+       DGABANRT like vimi55-DGABANRT,
+       sindart  like vimi55-sindart,
+       DANPAB   LIKE VIMI55-DANPAB,"Data primeiro reajuste contrato
+       DANPLETZ LIKE VIMI55-DANPLETZ,"Data do último reajuste de índices
+       DANPNXT  like vimi55-DANPNXT, "Data do próximo reajuste aluguel
+       BINDDAT1 like vimi55-BINDDAT1,
+      end of gh_vimi55_aux,
+
+      BEGIN OF gh_vimi16 OCCURS 0,
+       BUKRS    LIKE vimi16-BUKRS,
+       SMIVE    LIKE vimi16-SMIVE,
+       SKOART   LIKE vimi16-SKOART,
+       SANPNR   LIKE vimi16-SANPNR,
+       DGUELAB  LIKE vimi16-DGUELAB,
+       danpass  like vimi16-danpass,
+       BKONDALT LIKE vimi16-BKONDALT,
+       BANPASS  LIKE vimi16-BANPASS,
+      END OF gh_vimi16.
+
+* Ranges
+DATA: r_skoart TYPE RANGE OF skoart.
+
+data: BEGIN OF r_vimi16 OCCURS 0,
+       SIGN      TYPE C,
+       OPTION(2) TYPE C,
+       LOW(3)    TYPE C,
+       HIGH(3)   TYPE C,
+      END OF r_vimi16,
+
+      begin of gh_indice occurs 0,
+       seq(2)    type c,
+       indice(7) type c,
+      end of gh_indice,
+
+      begin of gh_indice_aux occurs 0,
+       seq(2)    type c,
+       indice(7) type c,
+      end of gh_indice_aux.
+
+* ALV
+DATA: new_table TYPE REF TO data,
+      new_line  TYPE REF TO data,
+      gc_cont_mes type i.
+
+DATA: it_fldcat    TYPE lvc_t_fcat,
+      wa_it_fldcat TYPE lvc_s_fcat.
+
+DATA: it_fldcat_0400    TYPE lvc_t_fcat,
+      wa_it_fldcat_0400 TYPE lvc_s_fcat.
+
+DATA: fieldcat   TYPE slis_t_fieldcat_alv WITH HEADER LINE.
+DATA: fieldcat_0400   TYPE slis_t_fieldcat_alv WITH HEADER LINE.
+DATA: fieldcatalog TYPE slis_t_fieldcat_alv WITH HEADER LINE,
+      gd_tab_group TYPE slis_t_sp_group_alv,
+      gd_layout    TYPE slis_layout_alv,
+      gd_event     TYPE slis_t_event,
+      gd_repid     LIKE sy-repid,
+      gc_valor12   like vimi16-BKONDALT.
+
+DATA: x_date        TYPE sy-datum,
+      x_days(2)     TYPE n,
+*      x_months      LIKE komp-anz_monate,
+      x_anz_monate TYPE komp-anz_monate,
+      x_monat(2)    TYPE n,
+      x_gjahr(4)    TYPE n,
+      x_mes_ano(7)  TYPE c,
+      gc_mes_ano_aux(7) type c,
+      x_mes_ano_aux(7)  TYPE c,
+      x_mes_ano_aux1(7)  TYPE c,
+      gc_vimi55(7)      type c,
+      gc_danpab(8)      type c,
+      gc_datames_ano    like sy-datum,
+      gc_datavimi55     like sy-datum,
+      gc_datum_aux      like sy-datum,
+      gc_controla_mes   like sy-datum,
+      gc_datum,
+      my_subrc      LIKE sy-subrc,
+      last_intreno  LIKE vimimv-intreno,
+      last_skoart   LIKE vzzkopo-skoart,
+      last_dguel_kp LIKE vzzkopo-dguel_kp,
+      max_dmiend    LIKE vimimv-dmiend,
+      max_months(4) TYPE n,
+* Variável para cálculo de sobreposição de condições
+      x_bkond LIKE vzzkopo-bkond,
+* WO 2187 <<<
+      x_bkond_old LIKE vzzkopo-bkond,
+* WO 2187 >>>
+      x_choice TYPE c,
+      gc_vimi55_aux(8) type c,
+      gc_vimi55_aux1(4) type c,
+      gc_ano(4)         type c,
+      gc_mes(2)         type c,
+      gi_linha type i,
+      gc_cont_aux type i,
+      x_months(4) TYPE n,
+      gc_INTRENO  type  vimi55-INTRENO.
+
+
+FIELD-SYMBOLS: <dyn_table>  TYPE STANDARD TABLE,
+               <dyn_table1> TYPE STANDARD TABLE,
+               <dyn_wa>     type any,
+               <dyn_wa1>     type any.
+FIELD-SYMBOLS: <fs1>.
+
+* Écran de Selecção
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-s01.
+SELECT-OPTIONS: p_bukrs FOR vimimv-bukrs,
+                p_smive FOR vimimv-smive.
+* WO 2161 <<<
+*PARAMETERS: p_date_o LIKE sy-datum OBLIGATORY,
+*            p_date_n LIKE sy-datum OBLIGATORY.
+
+* Alteração - Gabriel - 02/10/09
+
+*PARAMETERS: p_date_o LIKE sy-datum DEFAULT '20061101' NO-DISPLAY,
+
+PARAMETERS: p_date_o LIKE sy-datum NO-DISPLAY,
+
+* Fim Alteração - Gabriel - 02/10/09
+
+            p_date_n LIKE sy-datum OBLIGATORY.
+
+* WO 2161 >>>
+SELECTION-SCREEN END OF BLOCK b1.
+
+* Alteração - Gabriel - 18/09/09
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE text-s02.
+
+PARAMETERS: p_2004 TYPE c RADIOBUTTON GROUP a DEFAULT 'X',
+            p_2006 TYPE c RADIOBUTTON GROUP a.
+
+SELECTION-SCREEN END OF BLOCK b2.
+
+* Fim Alteração - Gabriel - 18/09/09

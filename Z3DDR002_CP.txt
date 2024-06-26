@@ -1,0 +1,55 @@
+*&---------------------------------------------------------------------*
+*& Programa Z3DDR002                                                   *
+*& Mapa de Linearização de Contratos                                   *
+*&---------------------------------------------------------------------*
+*& Sonae Sierra                                                        *
+*& Pedro Gaspar - 24.05.2007                                           *
+*&---------------------------------------------------------------------*
+INCLUDE Z3DDR002TOP_CP.
+*INCLUDE z3ddr002top.
+INCLUDE Z3DDR002F01_CP.
+*INCLUDE z3ddr002f01.
+AT SELECTION-SCREEN.
+  IF p_date_n GT sy-datum.
+    MESSAGE e995(z3) WITH text-m00.
+  ENDIF.
+
+
+* Alteração - Gabriel - 02/10/09
+
+  IF p_2004 EQ 'X'.
+
+    p_date_o = '20010101'.
+
+  ELSE.
+    p_date_o = '20011101'.
+  ENDIF.
+* Fim Alteração - Gabriel - 02/10/09
+
+  IF p_date_n LE p_date_o.
+    MESSAGE e995(z3) WITH text-m02.
+  ENDIF.
+
+* Bloco de Selecção de Dados
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+  PERFORM selecciona_dados.
+
+* Cria fieldcatalog Dinâmico
+  PERFORM constroi_fieldcatalog.
+
+* Bloco Após Selecção de Dados
+*----------------------------------------------------------------------*
+END-OF-SELECTION.
+  SET PF-STATUS 'BASE'.
+* Calcula facturacao do processamento antigo
+  PERFORM calcula_fact_antiga USING t_zcondsnapshots_old.
+
+* Alimenta a Tabela Dinâmica com Dados
+  PERFORM alimenta_tabela_dyn USING t_zcondsnapshots.
+
+
+* Apresenta ALV
+  PERFORM apresenta_alv.
+*----------------------------------------------------------------------*
+* Fim de Programa

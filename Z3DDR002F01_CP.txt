@@ -1,0 +1,3517 @@
+*----------------------------------------------------------------------*
+*   INCLUDE Z3DDR002F01                                                *
+*----------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  selecciona_dados
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM selecciona_dados.
+
+  DATA: x_msgtxt TYPE string,
+* WO 2213 <<<
+        x_usr08 LIKE vzsort-usr08,
+        x_usr09 LIKE vzsort-usr09.
+* WO 2213 >>>
+
+  DATA: gi_tabix LIKE sy-tabix.
+
+* Alteração - Gabriel - 18/09/09
+
+  IF p_2004 EQ 'X'.
+
+    start_date = '20010101'.
+
+  ELSE.
+
+    start_date = '20061101'.
+
+  ENDIF.
+
+* Fim Alteração - Gabriel - 18/09/09
+
+  SELECT * FROM vimimv INTO CORRESPONDING FIELDS OF TABLE t_vimimv
+                        WHERE bukrs IN p_bukrs
+                        AND smive IN p_smive.
+
+  SELECT SINGLE * FROM zcondsnapshots
+                  INTO w_zcondsnapshots
+                 WHERE pdate EQ p_date_o.
+
+  IF sy-subrc NE 0.
+    CONCATENATE p_date_o+6(2) p_date_o+4(2) p_date_o(4) INTO x_msgtxt.
+    MESSAGE e996(z3) WITH x_msgtxt text-m01.
+  ENDIF.
+
+  SELECT SINGLE * FROM zcondsnapshots
+                  INTO w_zcondsnapshots
+                 WHERE pdate EQ p_date_n.
+
+  IF sy-subrc NE 0.
+    CONCATENATE p_date_n+6(2) p_date_n+4(2) p_date_n(4) INTO x_msgtxt.
+    MESSAGE e996(z3) WITH x_msgtxt text-m01.
+  ENDIF.
+
+* Selecciona snapshots da última data anterior à data de
+* referência
+  LOOP AT t_vimimv INTO w_vimimv.
+* WO 2183 <<<
+    IF w_vimimv-dmibeg GT start_date.
+
+      SELECT MIN( pdate ) INTO p_date_o FROM zcondsnapshots
+                                       WHERE intreno EQ w_vimimv-intreno
+                                         AND pdate   GT w_vimimv-dmibeg.
+
+      IF sy-subrc NE 0.
+        CONTINUE.
+      ENDIF.
+    ELSE.
+      MOVE start_date TO p_date_o.
+    ENDIF.
+* WO 2183 >>>
+
+* Alteração - Gabriel - 02/10/09
+* BR GAAP & USGAAP
+
+    IF p_2004 EQ 'X'.
+
+      SELECT * FROM zcondsnapshots APPENDING TABLE t_zcondsnapshots_old
+                                        WHERE pdate  EQ p_date_o
+                                       AND intreno  EQ w_vimimv-intreno
+                                        AND dguel_ht GT '20001231'.
+
+
+* Selecciona snapshots da data de Referência
+      SELECT * FROM zcondsnapshots APPENDING TABLE t_zcondsnapshots
+                                        WHERE pdate  EQ p_date_n
+                                       AND intreno  EQ w_vimimv-intreno
+                                        AND dguel_ht GT '20001231'.
+
+    ELSE.
+
+* Fim Alteração - Gabriel - 02/10/09
+
+      SELECT * FROM zcondsnapshots APPENDING TABLE t_zcondsnapshots_old
+                                        WHERE pdate  EQ p_date_o
+                                       AND intreno  EQ w_vimimv-intreno
+                                        AND dguel_ht GT '20061031'.
+
+
+* Selecciona snapshots da data de Referência
+      SELECT * FROM zcondsnapshots APPENDING TABLE t_zcondsnapshots
+                                        WHERE pdate  EQ p_date_n
+                                       AND intreno  EQ w_vimimv-intreno
+                                        AND dguel_ht GT '20061031'.
+
+
+* Alteração - Gabriel - 02/10/09
+
+    ENDIF.
+
+* Fim Alteração - Gabriel - 02/10/09
+
+* WO 2213 <<<
+    SELECT SINGLE usr08 usr09 FROM vzsort
+           INTO (x_usr08, x_usr09)
+                     WHERE snumobj EQ 'VI'
+                       AND sobjekt EQ w_vimimv-intreno.
+
+    IF sy-subrc EQ 0.
+      IF NOT x_usr08 IS INITIAL.
+        MOVE x_usr08 TO w_vimimv-dmiend.
+      ENDIF.
+      IF NOT x_usr09 IS INITIAL.
+        IF x_usr09 GT p_date_n.
+          MOVE x_usr09 TO w_vimimv-dmiend.
+        ELSE.
+          ADD 1 TO x_usr09.
+          MOVE x_usr09 TO w_vimimv-dmibeg.
+        ENDIF.
+      ENDIF.
+    ELSE.
+      CLEAR x_usr09.
+    ENDIF.
+* WO 2213 >>>
+
+*Contratos vencidos nõ devem ser exibidos no ALV.
+    IF x_usr08 <=  p_date_n.
+      DELETE  t_vimimv             WHERE intreno =  w_vimimv-intreno.
+      DELETE  t_zcondsnapshots     WHERE intreno =  w_vimimv-intreno.
+      DELETE  t_zcondsnapshots_old WHERE intreno =  w_vimimv-intreno.
+      CONTINUE.
+    ENDIF.
+
+    IF w_vimimv-dmiend GT max_dmiend.
+      MOVE w_vimimv-dmiend TO max_dmiend.
+    ENDIF.
+    MODIFY t_vimimv FROM w_vimimv.
+  ENDLOOP.
+
+* WO 2187 <<<
+  MOVE start_date TO p_date_o.
+* WO 2187 >>>
+
+
+* Alteração Lucas Leite - 09/06/2010
+*  IF NOT t_zcondsnapshots[]  IS INITIAL.
+** Mês do reajuste   DANPAB
+*    SELECT  intreno skoart dgabanrt sindart danpab danpletz danpnxt
+*binddat1
+*          INTO TABLE gh_vimi55
+*          FROM vimi55
+*          FOR ALL ENTRIES IN t_zcondsnapshots
+*          WHERE intreno  EQ t_zcondsnapshots-intreno.
+**         AND   skoart   EQ t_zcondsnapshots_old-skoart.
+**         AND   dgabanrt EQ ''.
+*
+*    LOOP AT gh_vimi55.
+*      gi_tabix = sy-tabix.
+*      READ TABLE t_zcondsnapshots  INTO w_zcondsnapshots WITH KEY
+*             intreno = gh_vimi55-intreno
+*             skoart  = gh_vimi55-skoart.
+*      IF sy-subrc NE 0.
+*        DELETE gh_vimi55 INDEX gi_tabix .
+*      ENDIF.
+*    ENDLOOP.
+*  ENDIF.
+
+  LOOP AT t_zcondsnapshots  INTO w_zcondsnapshots.
+    gi_tabix = sy-tabix.
+    READ TABLE t_vimimv INTO w_vimimv WITH KEY
+         intreno = w_zcondsnapshots-intreno.
+    IF sy-subrc NE 0.
+      DELETE t_zcondsnapshots WHERE
+           intreno EQ  w_zcondsnapshots-intreno.
+    ENDIF.
+  ENDLOOP.
+
+
+  IF gh_vimi55[] IS INITIAL AND
+     NOT t_zcondsnapshots[] IS INITIAL.
+    SELECT intreno skoart dgabanrt sindart danpab danpletz  danpnxt
+binddat1
+           INTO TABLE gh_vimi55
+           FROM vimi55
+           FOR ALL ENTRIES IN t_zcondsnapshots
+           WHERE intreno  EQ t_zcondsnapshots-intreno.
+*          AND   skoart   EQ t_zcondsnapshots-skoart.
+*          AND   dgabanrt EQ ''.
+*    LOOP AT gh_vimi55.
+*      gi_tabix = sy-tabix.
+*      READ TABLE t_zcondsnapshots  INTO w_zcondsnapshots WITH KEY
+*             intreno = gh_vimi55-intreno
+*             skoart  = gh_vimi55-skoart.
+*      IF sy-subrc NE 0.
+*        DELETE gh_vimi55 INDEX gi_tabix .
+*      ENDIF.
+*    ENDLOOP.
+  ENDIF.
+
+  r_vimi16-sign = 'I'.
+  r_vimi16-option = 'EQ'.
+  r_vimi16-low = '10'.
+  APPEND r_vimi16.
+  r_vimi16-low = '400'.
+  APPEND r_vimi16.
+
+* Selecionar valores antigos
+  SELECT bukrs smive skoart sanpnr dguelab danpass bkondalt banpass
+         INTO TABLE gh_vimi16
+         FROM vimi16
+         FOR ALL ENTRIES IN t_vimimv
+         WHERE bukrs   EQ t_vimimv-bukrs
+         AND   smive   EQ t_vimimv-smive
+         AND   skoart  IN r_vimi16
+         AND   dguelab >= t_vimimv-dmibeg.
+* Fim da alteração
+
+  IF t_zcondsnapshots[] IS INITIAL.
+    MESSAGE e879(sd) WITH 'Favor verificar a tela de seleção.'.
+
+  ENDIF.
+
+ENDFORM.                    " selecciona_dados
+*&---------------------------------------------------------------------*
+*&      Form  monta_fieldcat
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_FLDS_COUNT  text
+*      -->P_0793   text
+*      -->P_0794   text
+*      -->P_0795   text
+*      -->P_0796   text
+*      -->P_0797   text
+*      -->P_0798   text
+*      -->P_0799   text
+*      -->P_0800   text
+*      -->P_0801   text
+*      -->P_0802   text
+*      -->P_0803   text
+*      -->P_0804   text
+*----------------------------------------------------------------------*
+FORM monta_fieldcat USING    i_col_pos         TYPE any
+                             i_fieldname       TYPE any
+                             i_ref_fieldname   TYPE any
+                             i_ref_tabname     TYPE any
+                             i_tabname         TYPE any
+                             i_key             TYPE any
+                             i_text            TYPE any
+                             i_checkbox        TYPE any
+                             i_edit            TYPE any
+                             i_no_out          TYPE any
+                             i_hotspot         TYPE any
+                             i_sum             TYPE any
+                             i_inttype         TYPE any.
+
+  CLEAR fieldcat.
+
+  fieldcat-col_pos       = i_col_pos.
+  fieldcat-fieldname     = i_fieldname.
+  fieldcat-ref_fieldname = i_ref_fieldname.
+  fieldcat-ref_tabname   = i_ref_tabname.
+  fieldcat-tabname       = i_tabname.
+  fieldcat-key           = i_key.
+  fieldcat-reptext_ddic  = i_text.
+  fieldcat-checkbox      = i_checkbox.
+  fieldcat-edit          = i_edit.
+  fieldcat-no_out        = i_no_out.
+  fieldcat-hotspot       = i_hotspot.
+  fieldcat-do_sum        = i_sum.
+  fieldcat-inttype       = i_inttype.
+
+  APPEND fieldcat.
+  CLEAR fieldcat.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  constroi_fieldcatalog
+*&---------------------------------------------------------------------*
+FORM constroi_fieldcatalog.
+  DATA: flds_count TYPE i,
+        cnt TYPE i.
+  DATA: t_datec(8) TYPE c.
+  DATA: t_date LIKE sy-datum.
+* WO 2161 <<<
+  DATA: x_resto TYPE komp-anz_monate,
+        x_months(4) TYPE n.
+* WO 2161 >>>
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'BUKRS'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'CHAR'.
+  wa_it_fldcat-intlen = 4.
+  wa_it_fldcat-outputlen = 4.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'BUKRS'  '' ''  '<dyn_table>' '' 'Empresa' '' '' '' '' ''
+''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'SWENR'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'CHAR'.
+  wa_it_fldcat-intlen = 8.
+  wa_it_fldcat-outputlen = 8.
+  APPEND wa_it_fldcat TO it_fldcat.
+  PERFORM monta_fieldcat USING :
+flds_count   'SWENR'  '' ''  '<dyn_table>' '' 'Unidade Económica' '' ''
+'' '' '' ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'SMIVE'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'CHAR'.
+  wa_it_fldcat-intlen = 13.
+  wa_it_fldcat-outputlen = 13.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'SMIVE'  '' ''  '<dyn_table>' '' 'Contrato' '' '' '' '' ''
+''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'SMENR'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'CHAR'.
+  wa_it_fldcat-intlen = 8.
+  wa_it_fldcat-outputlen = 8.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'SMENR'  '' ''  '<dyn_table>' '' 'Loja' '' '' '' '' '' ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'ZZNMFAN'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'CHAR'.
+  wa_it_fldcat-intlen = 40.
+  wa_it_fldcat-outputlen = 40.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'ZZNMFAN'  '' ''  '<dyn_table>' '' 'Nome Fantasia' '' ''
+''
+ '' '' ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'ALT'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'CHAR'.
+  wa_it_fldcat-intlen = 3.
+  wa_it_fldcat-outputlen = 3.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'ALT'  '' ''  '<dyn_table>' '' 'Alteração' '' '' '' '' ''
+''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'DMIBEG'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'DATS'.
+  wa_it_fldcat-intlen = 8.
+  wa_it_fldcat-outputlen = 8.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+
+  PERFORM monta_fieldcat USING :
+flds_count   'DMIBEG'  '' ''  '<dyn_table>' '' 'Data Inicio de Contrato'
+ '' '' ''
+''
+ '' ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'DMIEND'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'DATS'.
+  wa_it_fldcat-intlen = 8.
+  wa_it_fldcat-outputlen = 8.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'DMIEND'  '' ''  '<dyn_table>' '' 'Data Fim de Contrato' ''
+ '' '' ''
+''
+ ''.
+
+* WO 2213 <<<
+*  ADD 1 TO flds_count.
+*  wa_it_fldcat-fieldname = 'LAST_ACT'.
+*  wa_it_fldcat-col_pos = flds_count.
+*  wa_it_fldcat-datatype = 'DATS'.
+*  wa_it_fldcat-intlen = 8.
+*  wa_it_fldcat-outputlen = 8.
+*  APPEND wa_it_fldcat TO it_fldcat.
+*
+*  PERFORM monta_fieldcat USING :
+*flds_count   'LAST_ACT'  '' ''  '<dyn_table>' '' 'Ultima Actualização'
+*'' '' '' '' ''
+* ''.
+* WO 2213 >>>
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'P_DATE_N'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'DATS'.
+  wa_it_fldcat-intlen = 8.
+  wa_it_fldcat-outputlen = 8.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'P_DATE_N'  '' ''  '<dyn_table>' '' 'Data Referência' '' ''
+ '' '' ''
+ ''.
+
+* WO 2213 <<<
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'LAST_ACT'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'DATS'.
+  wa_it_fldcat-intlen = 8.
+  wa_it_fldcat-outputlen = 8.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'LAST_ACT'  '' ''  '<dyn_table>' '' 'Ultima Actualização de
+ renda'
+'' '' '' '' ''
+ ''.
+* WO 2213 >>>
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'BKOND'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-currency = 'BRL'.
+  wa_it_fldcat-datatype = 'CURR'.
+  wa_it_fldcat-outputlen = 20.
+  wa_it_fldcat-intlen = 15.
+  APPEND wa_it_fldcat TO it_fldcat .
+
+  PERFORM monta_fieldcat USING :
+flds_count   'BKOND'  '' ''  '<dyn_table>' '' 'Fact. Data Ref.' '' ''
+''
+'' ''
+''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'MONAT'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'CHAR'.
+  wa_it_fldcat-intlen = 4.
+  wa_it_fldcat-outputlen = 4.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'MONAT'  '' ''  '<dyn_table>' '' 'Meses Contrato' '' '' ''
+'' ''
+''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'LINEAR'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-currency = 'BRL'.
+  wa_it_fldcat-datatype = 'CURR'.
+  wa_it_fldcat-outputlen = 20.
+  wa_it_fldcat-intlen = 15.
+  APPEND wa_it_fldcat TO it_fldcat .
+
+  PERFORM monta_fieldcat USING :
+flds_count   'LINEAR'  '' ''  '<dyn_table>' '' 'Renda Linearizada' ''
+'' ''
+'' ''
+''.
+
+* WO 2161 <<<
+*  ADD 1 TO flds_count.
+*  wa_it_fldcat-fieldname = 'DELTA'.
+*  wa_it_fldcat-col_pos = flds_count.
+*  wa_it_fldcat-currency = 'BRL'.
+*  wa_it_fldcat-datatype = 'CURR'.
+*  wa_it_fldcat-outputlen = 20.
+*  wa_it_fldcat-intlen = 15.
+*  APPEND wa_it_fldcat TO it_fldcat .
+*
+*  PERFORM monta_fieldcat USING :
+*flds_count   'DELTA'  '' ''  '<dyn_table>' '' 'Renda Lin. Ult. Act.' ''
+*'' ''
+*'' ''
+*''.
+* WO 2161 >>>
+
+* WO 2187 <<<
+*  ADD 1 TO flds_count.
+*  wa_it_fldcat-fieldname = 'CONTROL'.
+*  wa_it_fldcat-col_pos = flds_count.
+*  wa_it_fldcat-currency = 'BRL'.
+*  wa_it_fldcat-datatype = 'CURR'.
+*  wa_it_fldcat-outputlen = 20.
+*  wa_it_fldcat-intlen = 15.
+*  APPEND wa_it_fldcat TO it_fldcat .
+*
+*  PERFORM monta_fieldcat USING :
+*flds_count   'CONTROL'  '' ''  '<dyn_table>' '' 'Controlo' '' '' ''
+*'' ''
+*''.
+* WO 2187 >>>
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'USR10'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'CHAR'.
+  wa_it_fldcat-intlen = 3.
+  wa_it_fldcat-outputlen = 3.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'USR10'  '' ''  '<dyn_table>' '' '2x Dez.' '' '' '' '' ''
+''.
+
+* WO 2213 <<<
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'ESP_COND'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'CHAR'.
+  wa_it_fldcat-intlen = 3.
+  wa_it_fldcat-outputlen = 3.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'ESP_COND'  '' ''  '<dyn_table>' '' 'Condição Especial' ''
+'' '' '' ''
+''.
+* WO 2213 >>>
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'MONTHS'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'CHAR'.
+  wa_it_fldcat-intlen = 4.
+  wa_it_fldcat-outputlen = 4.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'MONTHS'  '' ''  '<dyn_table>' '' 'Meses a Facturar' '' ''
+''
+'' ''
+''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'COLOR'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'CHAR'.
+  wa_it_fldcat-intlen = 4.
+  wa_it_fldcat-outputlen = 4.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'RTYPE'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'CHAR'.
+  wa_it_fldcat-intlen = 3.
+  wa_it_fldcat-outputlen = 3.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'RTYPE'  '' ''  '<dyn_table>' '' 'Tipo de Renda' '' '' ''
+'' ''
+''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'LAST_MOD'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'DATS'.
+  wa_it_fldcat-intlen = 8.
+  wa_it_fldcat-outputlen = 8.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'LAST_MOD'  '' ''  '<dyn_table>' '' 'Ultima Modifição'
+'' '' '' '' ''
+ ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat-fieldname = 'CREATE_DATE'.
+  wa_it_fldcat-col_pos = flds_count.
+  wa_it_fldcat-datatype = 'DATS'.
+  wa_it_fldcat-intlen = 8.
+  wa_it_fldcat-outputlen = 8.
+  APPEND wa_it_fldcat TO it_fldcat.
+
+  PERFORM monta_fieldcat USING :
+flds_count   'CREATE_DATE'  '' ''  '<dyn_table>' '' 'Data Criação'
+'' '' '' '' ''
+ ''.
+
+
+  CALL FUNCTION 'MONTHS_BETWEEN_TWO_DATES_NEW'
+       EXPORTING
+            i_datum_bis       = max_dmiend
+            i_datum_von       = start_date
+            i_kz_incl_bis     = 'X'
+            i_kz_volle_monate = ' '
+       IMPORTING
+            e_monate          = x_anz_monate.
+
+  ADD 1 TO flds_count.
+
+* WO 2161 <<<
+  MOVE x_anz_monate TO x_months.
+
+  COMPUTE x_resto = frac( x_anz_monate ).
+
+  IF NOT x_resto IS INITIAL.
+    ADD 1 TO x_months.
+  ENDIF.
+* WO 2161 >>>
+
+  DO x_months TIMES.
+    CLEAR wa_it_fldcat.
+
+    CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+         EXPORTING
+              months  = cnt
+              olddate = start_date
+         IMPORTING
+              newdate = x_date.
+
+
+    CONCATENATE x_date+4(2) '-' x_date(4) INTO x_mes_ano.
+    WRITE x_mes_ano TO wa_it_fldcat-fieldname.
+
+    gc_mes_ano_aux = x_mes_ano.
+
+    wa_it_fldcat-col_pos = flds_count.
+    wa_it_fldcat-currency = 'BRL'.
+    wa_it_fldcat-datatype = 'CURR'.
+    wa_it_fldcat-outputlen = 20.
+    wa_it_fldcat-intlen = 15.
+    APPEND wa_it_fldcat TO it_fldcat .
+
+    PERFORM monta_fieldcat USING:
+    flds_count   wa_it_fldcat-fieldname  '' ''  '<dyn_table>' ''
+x_mes_ano
+   '' '' '' '' '' ''.
+
+    ADD 1 TO flds_count.
+    ADD 1 TO cnt.
+    IF cnt GT 245.
+      EXIT.
+    ENDIF.
+  ENDDO.
+
+  CALL METHOD cl_alv_table_create=>create_dynamic_table
+               EXPORTING
+                  it_fieldcatalog = it_fldcat
+               IMPORTING
+                  ep_table        = new_table.
+
+  ASSIGN new_table->* TO <dyn_table>.
+  gc_cont_aux = x_months.
+ENDFORM.                    " constroi_fieldcatalog
+*&---------------------------------------------------------------------*
+*&      Form  calcula_fact_antiga
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_T_ZCONDSNAPSHOTS_OLD  text
+*----------------------------------------------------------------------*
+FORM calcula_fact_antiga USING p_t_zcondsnapshots LIKE t_zcondsnapshots.
+  DATA: x_months(4) TYPE n,
+        last_day    LIKE sy-datum,
+        month_days  LIKE sy-datum,
+        x_szbmeth   LIKE vikoko-szbmeth,
+        x_jbmonat   LIKE vikoko-jbmonat,
+        x_count(4)  TYPE n.
+
+  SORT p_t_zcondsnapshots BY intreno skoart dguel_kp.
+
+  LOOP AT p_t_zcondsnapshots INTO w_zcondsnapshots.
+
+    MOVE w_zcondsnapshots TO w_zcondsnapshots_aux.
+
+    AT NEW intreno.
+      READ TABLE t_vimimv INTO w_vimimv
+                      WITH KEY intreno = w_zcondsnapshots_aux-intreno.
+
+      IF sy-subrc EQ 0.
+        MOVE-CORRESPONDING w_vimimv TO w_total_old.
+
+        SELECT SINGLE szbmeth jbmonat FROM vikoko
+                              INTO (x_szbmeth, x_jbmonat)
+                             WHERE bukrs EQ w_vimimv-bukrs
+                               AND rkey1 EQ w_vimimv-smive.
+
+        IF sy-subrc NE 0.
+          MOVE '2' TO x_szbmeth.
+          CLEAR x_jbmonat.
+        ENDIF.
+      ELSE.
+        CONTINUE.
+      ENDIF.
+    ENDAT.
+
+* Check end of conditions for renewed contracts
+    IF w_vimimv-dmiend LT w_zcondsnapshots_aux-dguel_ht.
+      MOVE w_vimimv-dmiend TO w_zcondsnapshots_aux-dguel_ht.
+    ENDIF.
+    IF w_zcondsnapshots_aux-dguel_kp LT start_date.
+      MOVE start_date TO w_zcondsnapshots_aux-dguel_kp.
+    ENDIF.
+* Primeira Condição
+    CALL FUNCTION 'MONTHS_BETWEEN_TWO_DATES_NEW'
+      EXPORTING
+        i_datum_bis             = w_zcondsnapshots_aux-dguel_ht
+        i_datum_von             = w_zcondsnapshots_aux-dguel_kp
+*   I_KZ_INCL_BIS           = ' '
+        i_kz_volle_monate       = 'X'
+      IMPORTING
+        e_monate                = x_anz_monate.
+
+    MOVE x_anz_monate TO x_months.
+
+*    IF x_jbmonat EQ '2' AND
+*       w_zcondsnapshots_aux-ammrhy   NE '001' AND
+*       w_zcondsnapshots_aux-dguel_kp GE p_date_n.
+*
+*      CONCATENATE w_zcondsnapshots_aux-dguel_kp+4(2) '-'
+*                  w_zcondsnapshots_aux-dguel_kp INTO x_mes_ano.
+*
+*      ASSIGN COMPONENT x_mes_ano OF STRUCTURE <dyn_wa> TO <fs1>.
+*
+*      IF sy-subrc EQ 0.
+*        ADD w_total-bkond TO <fs1>.
+*      ENDIF.
+*    ELSE.
+
+    ADD 1 TO x_months.
+    MOVE '1' TO x_count.
+
+    DO x_months TIMES.
+
+      ASSIGN COMPONENT 'BKOND' OF STRUCTURE <dyn_wa> TO <fs1>.
+
+* Condição é parcial no mês
+      CALL FUNCTION 'LAST_DAY_OF_MONTHS'
+           EXPORTING
+                day_in            = w_zcondsnapshots_aux-dguel_kp
+           IMPORTING
+                last_day_of_month = month_days
+           EXCEPTIONS
+                day_in_no_date    = 1
+                OTHERS            = 2.
+
+      IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+
+      IF month_days(6) EQ w_zcondsnapshots_aux-dguel_ht(6).
+        MOVE w_zcondsnapshots_aux-dguel_ht TO last_day.
+      ELSE.
+        MOVE month_days TO last_day.
+      ENDIF.
+
+      IF x_szbmeth EQ '1'.
+        MOVE '30' TO month_days+6(2).
+        x_days = month_days+6(2) -
+                 w_zcondsnapshots_aux-dguel_kp+6(2) + 1.
+      ELSE.
+        x_days = last_day+6(2) - w_zcondsnapshots_aux-dguel_kp+6(2) + 1.
+      ENDIF.
+
+      IF x_count EQ '0001' OR x_count EQ x_months.
+        w_total-bkond = ( w_zcondsnapshots_aux-bkond /
+                          month_days+6(2) ) * x_days.
+      ELSE.
+        w_total-bkond = w_zcondsnapshots_aux-bkond.
+      ENDIF.
+
+      ADD w_total-bkond TO w_total_old-bkond.
+
+      CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+           EXPORTING
+                months  = '1'
+                olddate = w_zcondsnapshots_aux-dguel_kp
+           IMPORTING
+                newdate = w_zcondsnapshots_aux-dguel_kp.
+
+      MOVE '01' TO w_zcondsnapshots_aux-dguel_kp+6(2).
+
+      ADD 1 TO x_count.
+    ENDDO.
+
+
+    AT END OF intreno.
+* WO 2187 <<<
+*      IF w_vimimv-dmibeg LE '20061031'.
+*        MOVE start_date TO w_vimimv-dmibeg.
+*      ENDIF.
+*
+*      CALL FUNCTION 'MONTHS_BETWEEN_TWO_DATES_NEW'
+*           EXPORTING
+*                i_datum_bis       = w_vimimv-dmiend
+*                i_datum_von       = w_vimimv-dmibeg
+*                i_kz_incl_bis     = 'X'
+*                i_kz_volle_monate = 'X'
+*           IMPORTING
+*                e_monate          = x_anz_monate.
+*
+*      MOVE x_anz_monate TO x_months.
+*
+*      w_total_old-bkond = w_total_old-bkond / x_months.
+* WO 2187 >>>
+
+      APPEND w_total_old TO t_total_old.
+      CLEAR w_total_old.
+    ENDAT.
+  ENDLOOP.
+ENDFORM.                    " calcula_fact_antiga
+*&---------------------------------------------------------------------*
+*&      Form  alimenta_tabela_dyn
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM alimenta_tabela_dyn USING p_t_zcondsnapshots LIKE t_zcondsnapshots.
+* Alteração - Gabriel - 27/05/09
+
+  TYPES: BEGIN OF ty_fat,
+           dbervon TYPE vibepp-dbervon,
+         END OF ty_fat.
+
+  DATA: wa_fat TYPE ty_fat.
+
+  DATA: t_fat TYPE TABLE OF ty_fat.
+
+* Fim Alteração - Gabriel - 27/05/09
+
+  DATA:  gc_reajuste(8)          TYPE c,
+         gc_soma_data(4)         TYPE c,
+         gc_data_val_desde(8)    TYPE c,
+         gc_cont,
+         gc_vez,
+         gc_data_cancelamento    TYPE sy-datum,
+         gc_soma_diferenca       LIKE vzzkopo-bkond,
+         gc_soma_diferenca1      LIKE vzzkopo-bkond.
+
+  DATA: x_months(4) TYPE p,
+        last_day    LIKE sy-datum,
+        month_days  LIKE sy-datum,
+        x_szbmeth   LIKE vikoko-szbmeth,
+        x_jbmonat   LIKE vikoko-jbmonat,
+        x_usr10     LIKE vzsort-usr10,
+        x_usr09     LIKE vzsort-usr09,
+        x_count(4)  TYPE n,
+
+* Alteração - Gabriel - 27/05/09
+
+        v_imkey      TYPE vimimv-imkey,
+        v_mes_dif    TYPE komp-anz_monate,
+        v_mes_dif2   TYPE komp-anz_monate,
+        v_mes_final  TYPE i,
+        v_mes_final2 TYPE i,
+        gi_lines     TYPE i,
+* Fim Alteração - Gabriel - 27/05/09
+
+* WO 2161 <<<
+        x_resto     TYPE komp-anz_monate,
+* WO 2161 >>>
+* WO 2213 <<<
+        x_danpass   LIKE vimi16-danpass,
+        x_esp_cond  TYPE c.
+* WO 2213 >>>
+
+* >>> Alteração Valor corte contrato - SondaProcwork - 06/01/11 - Início
+  DATA: vl_data_corte    TYPE sy-datum,
+        vl_tot_aux       TYPE vzzkopo-bkond.
+* <<< Alteração Valor corte contrato - SondaProcwork - 06/01/11 - Fim
+
+* >>> Alteração - Procwork - 09/11/2010 - Início
+  DATA: tl_vzzkopo    TYPE TABLE OF vzzkopo,
+        wa_vzzkopo    TYPE vzzkopo.
+
+  REFRESH tl_vzzkopo[].
+  SELECT *
+    FROM vzzkopo
+    INTO TABLE tl_vzzkopo
+    FOR ALL ENTRIES IN t_vimimv
+    WHERE bukrs  = t_vimimv-bukrs
+      AND rkey1  = t_vimimv-smive
+      AND rkey2  = t_vimimv-swenr
+      AND rkey3  = t_vimimv-smenr
+      AND skoart = '10'.
+
+  IF sy-subrc IS INITIAL.
+
+    SORT: tl_vzzkopo BY bukrs
+                        rkey1
+                        rkey2
+                        rkey3
+                        dguel_kp.
+
+  ENDIF.
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+  SORT p_t_zcondsnapshots BY intreno skoart dguel_kp.
+  LOOP AT p_t_zcondsnapshots INTO w_zcondsnapshots.
+
+    IF w_zcondsnapshots-skoart EQ '0010' AND
+       w_zcondsnapshots-bkond  EQ '0.00'.
+      READ TABLE p_t_zcondsnapshots INTO w_zcondsnapshots WITH KEY
+               skoart = '0400'.
+      IF w_zcondsnapshots-bkond  NE '0.00'.
+
+        SORT p_t_zcondsnapshots BY intreno skoart DESCENDING.
+        EXIT.
+      ENDIF.
+    ELSEIF w_zcondsnapshots-skoart EQ '0010' AND
+           w_zcondsnapshots-bkond  NE '0.00'.
+      EXIT.
+    ENDIF.
+  ENDLOOP.
+
+  LOOP AT p_t_zcondsnapshots INTO w_zcondsnapshots.
+
+    MOVE w_zcondsnapshots TO w_zcondsnapshots_aux.
+
+    AT NEW intreno.
+      CREATE DATA new_line LIKE LINE OF <dyn_table>.
+      ASSIGN new_line->* TO <dyn_wa>.
+
+* WO 2213 <<<
+      CLEAR: x_esp_cond, gc_cont.
+* WO 2213 >>>
+
+      READ TABLE t_vimimv INTO w_vimimv
+                      WITH KEY intreno = w_zcondsnapshots_aux-intreno.
+
+      IF sy-subrc EQ 0.
+
+        MOVE-CORRESPONDING w_vimimv TO w_total.
+
+* >>> Alteração - Procwork - 09/11/2010 - Início
+        CLEAR wa_vzzkopo.
+        READ TABLE tl_vzzkopo INTO wa_vzzkopo
+          WITH KEY bukrs = w_vimimv-bukrs
+                   rkey1 = w_vimimv-smive
+                   rkey2 = w_vimimv-swenr
+                   rkey3 = w_vimimv-smenr
+                   BINARY SEARCH.
+
+        IF sy-subrc IS INITIAL.
+
+          w_total-dmibeg = wa_vzzkopo-dguel_kp.
+
+        ENDIF.
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+        ASSIGN COMPONENT 'BUKRS' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = w_total-bukrs.
+
+        ASSIGN COMPONENT 'SWENR' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = w_total-swenr.
+
+        ASSIGN COMPONENT 'SMIVE' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = w_total-smive.
+
+        ASSIGN COMPONENT 'SMENR' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = w_total-smenr.
+
+        ASSIGN COMPONENT 'ZZNMFAN' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = w_total-zznmfan.
+
+        SELECT SINGLE usr09 usr10 FROM vzsort INTO (x_usr09, x_usr10)
+                           WHERE snumobj EQ 'VI'
+                             AND sobjekt EQ w_vimimv-intreno.
+
+        IF sy-subrc EQ 0.
+          IF NOT x_usr09 IS INITIAL.
+* WO 2161 <<<
+*            MOVE x_usr09 TO w_total-dmibeg.
+
+            IF p_date_n LT x_usr09.
+              MOVE x_usr09 TO w_total-dmiend.
+            ELSE.
+              ADD 1 TO x_usr09.
+
+              MOVE x_usr09 TO w_total-dmibeg.
+            ENDIF.
+* WO 2161 >>>
+          ENDIF.
+        ELSE.
+          CLEAR: x_usr09.
+*                 x_usr10.
+        ENDIF.
+
+        ASSIGN COMPONENT 'DMIBEG' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = w_total-dmibeg.
+
+        ASSIGN COMPONENT 'DMIEND' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = w_total-dmiend.
+
+* WO 2213 <<<
+*        ASSIGN COMPONENT 'LAST_ACT' OF STRUCTURE <dyn_wa> TO <fs1>.
+*        <fs1> = p_date_o.
+
+        CALL FUNCTION 'Z_DATA_REAJUSTE'
+             EXPORTING
+                  bukrs         = w_total-bukrs
+                  smive         = w_total-smive
+                  data          = p_date_n
+                  prox_ult      = space
+             IMPORTING
+                  data_reajuste = x_danpass.
+
+        ASSIGN COMPONENT 'LAST_ACT' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = x_danpass.
+
+
+* WO 2213 >>>
+
+        ASSIGN COMPONENT 'LAST_MOD' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = w_vimimv-dbear.
+
+        ASSIGN COMPONENT 'CREATE_DATE' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = w_vimimv-derf.
+
+        ASSIGN COMPONENT 'P_DATE_N' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = p_date_n.
+
+        ASSIGN COMPONENT 'USR10' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = x_usr10.
+
+        CALL FUNCTION 'MONTHS_BETWEEN_TWO_DATES_NEW'
+             EXPORTING
+                  i_datum_bis       = w_vimimv-dmiend
+                  i_datum_von       = p_date_n
+                  i_kz_incl_bis     = 'X'
+                  i_kz_volle_monate = 'X'
+             IMPORTING
+                  e_monate          = x_anz_monate.
+
+        MOVE x_anz_monate TO x_months.
+
+        ASSIGN COMPONENT 'MONTHS' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = x_months.
+
+        SELECT SINGLE szbmeth jbmonat FROM vikoko
+                              INTO (x_szbmeth, x_jbmonat)
+                             WHERE bukrs EQ w_vimimv-bukrs
+                               AND rkey1 EQ w_vimimv-smive.
+        IF sy-subrc NE 0.
+          MOVE '2' TO x_szbmeth.
+          CLEAR x_jbmonat.
+        ENDIF.
+      ELSE.
+        CONTINUE.
+      ENDIF.
+    ENDAT.
+
+
+* WO 2213 <<<
+    IF w_zcondsnapshots_aux-skoart EQ '0915' AND
+       NOT w_zcondsnapshots_aux-bkond IS INITIAL.
+
+      MOVE 'X' TO x_esp_cond.
+    ENDIF.
+* WO 2213 >>>
+
+* Check data for renewed contract.
+    IF w_total-dmiend LT w_zcondsnapshots_aux-dguel_ht.
+      MOVE w_total-dmiend TO w_zcondsnapshots_aux-dguel_ht.
+    ENDIF.
+
+* Primeira Condição
+* WO 2187 <<<
+    IF w_zcondsnapshots_aux-dguel_kp LT start_date.
+      MOVE start_date TO w_zcondsnapshots_aux-dguel_kp.
+    ENDIF.
+* WO 2187 >>>
+* WO 2191 <<<
+    IF w_zcondsnapshots_aux-dguel_kp LT w_total-dmibeg AND
+       w_zcondsnapshots_aux-dguel_ht GT w_total-dmibeg.
+
+      MOVE w_total-dmibeg TO w_zcondsnapshots_aux-dguel_kp.
+    ELSEIF w_zcondsnapshots_aux-dguel_kp LT w_total-dmibeg AND
+           w_zcondsnapshots_aux-dguel_ht LT w_total-dmibeg.
+      CONTINUE.
+    ENDIF.
+* WO 2191 >>>
+    CALL FUNCTION 'MONTHS_BETWEEN_TWO_DATES_NEW'
+      EXPORTING
+        i_datum_bis             = w_zcondsnapshots_aux-dguel_ht
+        i_datum_von             = w_zcondsnapshots_aux-dguel_kp
+*   I_KZ_INCL_BIS           = ' '
+        i_kz_volle_monate       = 'X'
+      IMPORTING
+        e_monate                = x_anz_monate.
+
+    MOVE x_anz_monate TO x_months.
+
+    ADD 1 TO x_months.
+    MOVE '1' TO x_count.
+
+* Alteração - Lucas Leite -
+* Valida o canvelamento onde a partir data DBEAR
+* deverá exibir nenhum valor e 0 a linealirização.
+
+    CLEAR gc_data_cancelamento.
+    IF w_vimimv-dkuezu NE '00000000'.
+      IF w_vimimv-dbear NE '00000000'.
+        CONCATENATE w_vimimv-dkuezu(6) '01' INTO
+        gc_data_cancelamento.
+      ENDIF.
+    ENDIF.
+
+    gh_geral-smive = w_total-smive.
+
+    DO x_months TIMES.
+
+* Condição é parcial no mês
+      CALL FUNCTION 'LAST_DAY_OF_MONTHS'
+           EXPORTING
+                day_in            = w_zcondsnapshots_aux-dguel_kp
+           IMPORTING
+                last_day_of_month = month_days
+           EXCEPTIONS
+                day_in_no_date    = 1
+                OTHERS            = 2.
+
+      IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+
+      IF month_days(6) EQ w_zcondsnapshots_aux-dguel_ht(6).
+        MOVE w_zcondsnapshots_aux-dguel_ht TO last_day.
+
+        IF x_szbmeth EQ '1'.
+          IF last_day EQ month_days.
+            MOVE '30' TO last_day+6(2).
+          ENDIF.
+
+          MOVE '30' TO month_days+6(2).
+        ENDIF.
+
+        x_days = last_day+6(2) - w_zcondsnapshots_aux-dguel_kp+6(2) + 1.
+      ELSE.
+        MOVE month_days TO last_day.
+
+        IF x_szbmeth EQ '1'.
+          MOVE '30' TO month_days+6(2).
+          x_days = month_days+6(2) -
+                   w_zcondsnapshots_aux-dguel_kp+6(2) + 1.
+        ELSE.
+
+          x_days = last_day+6(2) - w_zcondsnapshots_aux-dguel_kp+6(2) +
+1.
+        ENDIF.
+      ENDIF.
+
+      gh_geral-dia = x_days.
+      IF x_count EQ '0001' OR x_count EQ x_months.
+        w_total-bkond = ( w_zcondsnapshots_aux-bkond /
+                          month_days+6(2) ) * x_days.
+
+      ELSE.
+        w_total-bkond = w_zcondsnapshots_aux-bkond.
+      ENDIF.
+
+* Caso o valor seja 253.594,75
+* Alteração Lucas Leite
+
+      gc_total_bkond = w_total-bkond.
+
+      READ TABLE gh_vimi16 WITH KEY
+            banpass = w_total-bkond.
+      IF sy-subrc EQ 0.
+
+        DO 5 TIMES.
+          READ TABLE gh_vimi16 WITH KEY banpass =
+          gh_vimi16-bkondalt.
+          IF sy-subrc NE 0.
+*          READ TABLE gh_vimi16 WITH KEY banpass =
+*               gh_vimi16-bkondalt.
+            EXIT.
+          ENDIF.
+        ENDDO.
+
+        w_total-bkond = gh_vimi16-bkondalt.
+      ENDIF.
+
+* Fim da alteração
+      IF w_zcondsnapshots_aux-dguel_kp GE start_date AND
+         w_zcondsnapshots_aux-skoart EQ '0010' OR
+         w_zcondsnapshots_aux-skoart EQ '0040' OR
+         w_zcondsnapshots_aux-skoart EQ '0400'.
+
+        CONCATENATE w_zcondsnapshots_aux-dguel_kp+4(2) '-'
+                    w_zcondsnapshots_aux-dguel_kp INTO x_mes_ano.
+
+* Alteração - Lucas Leite - Valor do Mês Faturado
+        CONCATENATE  x_mes_ano+3(4) x_mes_ano(2) '01' INTO
+        gh_geral-data.
+        gh_geral_aux-item  = w_zcondsnapshots_aux-skoart.
+        gh_geral_aux-data  = gh_geral-data.
+        gh_geral_aux-valor_linha1 = w_total-bkond .
+        APPEND gh_geral_aux.
+
+        w_total-bkond = gc_total_bkond.
+
+        READ TABLE gh_geral WITH KEY data = gh_geral-data.
+*                                    item = w_zcondsnapshots_aux-skoart
+*.
+        IF sy-subrc NE 0.
+          gh_geral-item = w_zcondsnapshots_aux-skoart.
+          gh_geral-valor_linha1 = w_total-bkond.
+          APPEND gh_geral. CLEAR gh_geral-valor_linha1.
+        ELSE.
+          gi_tabix = sy-tabix. CLEAR gc_sinal.
+          IF  w_total-bkond < 0 OR
+              w_zcondsnapshots_aux-skoart EQ '0400'.
+
+            gc_sinal = w_total-bkond.
+            IF gc_sinal CA '-'.
+              w_total-bkond = w_total-bkond * -1.
+              gc_p = 1.
+            ENDIF.
+            CLEAR gc_sinal.
+            gc_sinal = gh_geral-valor_linha1.
+            IF gc_sinal CA '-'.
+              gh_geral-valor_linha1 = gh_geral-valor_linha1 * -1.
+            ENDIF.
+            IF gc_p = 1.
+              gh_geral-valor_linha1 =
+                 gh_geral-valor_linha1 - w_total-bkond.
+              MODIFY gh_geral INDEX gi_tabix.
+            ENDIF.
+            IF w_zcondsnapshots_aux-skoart EQ '0400'.
+              gh_geral-item = w_zcondsnapshots_aux-skoart.
+              gh_geral-valor_linha1 = w_total-bkond.
+              APPEND gh_geral.
+            ENDIF.
+
+            IF gc_p = 1.
+              w_total-bkond = w_total-bkond * -1.
+            ENDIF.
+            gc_p = ''.
+          ELSE.
+            IF gh_geral-item = w_zcondsnapshots_aux-skoart.
+              gh_geral-valor_linha1 =
+               gh_geral-valor_linha1 + w_total-bkond.
+              MODIFY gh_geral INDEX gi_tabix.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+* Fim da alteração
+
+* Caso Contrato seja de cancelamento deverá ser impresso somente até o
+* último mês do cancelamento.
+
+        IF gc_data_cancelamento NE '00000000'.
+          IF gh_geral-data  <= gc_data_cancelamento.
+            IF  w_zcondsnapshots_aux-skoart EQ '0010' OR
+                w_zcondsnapshots_aux-skoart EQ '0040'.
+              ASSIGN COMPONENT x_mes_ano OF STRUCTURE <dyn_wa> TO <fs1>.
+              IF sy-subrc EQ 0.
+                IF w_zcondsnapshots_aux-dguel_kp GE w_total-dmiend.
+                  CLEAR <fs1>.
+                ELSE.
+                  ADD w_total-bkond TO <fs1>.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+
+        ELSE.
+          IF  w_zcondsnapshots_aux-skoart EQ '0010' OR
+               w_zcondsnapshots_aux-skoart EQ '0040'.
+            ASSIGN COMPONENT x_mes_ano OF STRUCTURE <dyn_wa> TO <fs1>.
+            IF sy-subrc EQ 0.
+* WO 2213 <<<
+*          ADD w_total-bkond TO <fs1>.
+
+              IF w_zcondsnapshots_aux-dguel_kp GE w_total-dmiend.
+                CLEAR <fs1>.
+              ELSE.
+
+                ADD w_total-bkond TO <fs1>.
+              ENDIF.
+* WO 2213 >>>
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+
+      CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+           EXPORTING
+                months  = '1'
+                olddate = w_zcondsnapshots_aux-dguel_kp
+           IMPORTING
+                newdate = w_zcondsnapshots_aux-dguel_kp.
+
+      MOVE '01' TO w_zcondsnapshots_aux-dguel_kp+6(2).
+
+      ADD 1 TO x_count.
+
+    ENDDO.
+*    ENDIF.
+
+    CLEAR gc_cont_mes.
+
+    AT END OF intreno.
+
+      CLEAR  gh_vimi55_aux[].
+      LOOP AT gh_vimi55 WHERE intreno EQ w_zcondsnapshots_aux-intreno.
+        gh_vimi55_aux = gh_vimi55.
+        APPEND gh_vimi55_aux.
+        CLEAR  gh_vimi55_aux.
+      ENDLOOP.
+*      SORT  gh_vimi55_aux BY danpab DESCENDING.
+      SORT  gh_vimi55_aux BY dgabanrt DESCENDING.
+
+* Data do reajuste
+      READ TABLE gh_vimi55_aux INDEX 1.
+      IF gh_vimi55_aux-dgabanrt EQ '00000000'.
+        SORT  gh_vimi55_aux BY danpnxt DESCENDING.
+        READ TABLE gh_vimi55_aux INDEX 1.
+      ENDIF.
+* DANPAB
+
+      gc_vimi55_aux = gh_vimi55_aux-danpab.
+
+      gc_ano = gh_vimi55_aux-danpab(4).
+      gc_mes = gh_vimi55_aux-danpab+4(2).
+
+      CONCATENATE gh_vimi55_aux-danpab(4)
+           gh_vimi55_aux-danpab+4(2) '01' INTO gc_datavimi55.
+
+      CONCATENATE sy-datum(6) '01' INTO gc_datum_aux.
+
+      gh_geral_aux2[] = gh_geral[].
+      CLEAR gc_cond_mist.
+* Valida se o contrato tem condição 0400 e 0010.
+      SORT gh_geral BY data item.
+      LOOP AT gh_geral.
+        IF gh_geral-item EQ '0400' OR
+           gh_geral-item EQ '0410'.
+          gi_tabix = sy-tabix.
+          gh_geral_0400 = gh_geral.
+          APPEND gh_geral_0400.
+          DELETE gh_geral INDEX gi_tabix.
+          gc_cond_mist = 2.
+        ENDIF.
+      ENDLOOP.
+
+      LOOP AT gh_geral.
+        IF gh_geral-item EQ '0010' AND gh_geral-valor_linha1 NE '0.00'.
+          gc_cond_mist = 1.
+        ELSEIF gh_geral-item NE '0010'.
+          IF gh_geral-valor_linha1 NE '0.00'.
+            DELETE gh_geral WHERE data = gh_geral-data
+                            AND   item <> gh_geral-item.
+          ENDIF.
+          IF gc_cond_mist EQ 1.
+            gc_cond_mist = 2.
+          ELSE.
+            gc_cond_mist = 1.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+
+      LOOP AT gh_geral.
+        CLEAR:  gc_valor_percentual, gc_controla_12.
+        gi_tabix = sy-tabix.
+        IF gh_geral-valor_linha1 NE '' AND
+           gh_geral-data < gc_datavimi55 AND gh_indice_aux[] IS INITIAL.
+
+          gc_valor_geral = gc_valor_geral + gh_geral-valor_linha1.
+          gh_geral-valor_linha3 = gh_geral-valor_linha1.
+          MODIFY gh_geral INDEX gi_tabix.
+        ELSE.
+
+          IF gh_geral-data = gc_datavimi55 .
+            IF gh_geral-data < gc_datum_aux.
+              lc_ano =  gc_ano.
+              SELECT SINGLE indproz FROM t094p INTO lc_indproz
+                             WHERE wbind EQ gh_vimi55_aux-sindart
+                                AND indjhr EQ lc_ano
+                            AND indmon EQ gc_mes.
+              IF sy-subrc EQ 0.
+                SUBTRACT 1 FROM lc_ano .
+                SELECT SINGLE indproz FROM t094p INTO lc_indproz_old
+                                WHERE wbind EQ gh_vimi55_aux-sindart
+                                                AND indjhr EQ lc_ano
+                                                AND indmon EQ gc_mes.
+
+                IF sy-subrc EQ 0.
+                lc_percentual = ( lc_indproz - lc_indproz_old ) * 100 /
+                                                         lc_indproz_old.
+                ENDIF.
+              ENDIF.
+              gc_ano = gc_datavimi55(4) + 1.
+              CONCATENATE gc_ano gc_datavimi55+4(2)
+              gc_datavimi55+6(2) INTO gc_datavimi55.
+              gc_sinal = lc_percentual.
+              IF gc_sinal CA '-'.
+              ELSE.
+                ADD 1 TO gc_seq.
+                gh_indice_aux-seq = gc_seq.
+                gh_indice_aux-indice = lc_percentual.
+                APPEND gh_indice_aux.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+
+          IF gh_geral-data+4(2) EQ '12' AND x_usr10 EQ 'X' AND
+             gh_geral-valor_linha1 NE '0.00'.
+            gc_soma_ano = gh_geral-data(4).
+            gc_soma_ano = gc_soma_ano + 1.
+            CONCATENATE gc_soma_ano '0101' INTO gc_data_ano_d.
+
+            READ TABLE gh_geral_aux2 WITH KEY data = gc_data_ano_d.
+            IF sy-subrc EQ 0.
+              gc_controla_12 = 1.
+              gc_valor_12 = gh_geral_aux2-valor_linha1    .
+*              ENDIF.
+            ENDIF.
+          ENDIF.
+
+          IF gc_controla_12 = 1.
+            gc_valor_percentual_  =
+                           gc_valor_12 * 2.
+          ELSE.
+            gc_valor_percentual_  = gh_geral-valor_linha1.
+          ENDIF.
+*          IF ( gc_cond_mist = 1 ) OR
+*             ( gc_cond_mist = 2 AND gh_geral-item EQ '0010' ).
+          SORT gh_indice_aux BY seq DESCENDING.
+          LOOP AT gh_indice_aux.
+            gh_indice_aux-indice = ( gh_indice_aux-indice / 100 )  + 1.
+            gc_valor_percentual_  =
+               gc_valor_percentual_ / gh_indice_aux-indice.
+          ENDLOOP.
+*          ENDIF.
+* Valor linha 3 é o conteúdo original
+          gh_geral-valor_linha3 = gc_valor_percentual_.
+          MODIFY gh_geral INDEX gi_tabix.
+          gc_valor_geral = gc_valor_geral + gc_valor_percentual_.
+        ENDIF.
+      ENDLOOP.
+
+
+      ASSIGN COMPONENT 'BKOND' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = gc_valor_geral  .
+
+* WO 2192 <<<
+*      IF w_vimimv-dmibeg LE '20061031'.
+*        MOVE start_date TO w_vimimv-dmibeg.
+*      ENDIF.
+*
+*      CALL FUNCTION 'MONTHS_BETWEEN_TWO_DATES_NEW'
+*           EXPORTING
+*                i_datum_bis       = w_vimimv-dmiend
+*                i_datum_von       = w_vimimv-dmibeg
+*                i_kz_incl_bis     = 'X'
+*                i_kz_volle_monate = ' '
+*           IMPORTING
+*                e_monate          = x_anz_monate.
+
+      IF w_total-dmibeg LE '20061031'.
+        MOVE start_date TO w_vimimv-dmibeg.
+
+        CALL FUNCTION 'MONTHS_BETWEEN_TWO_DATES_NEW'
+             EXPORTING
+                  i_datum_bis       = w_vimimv-dmiend
+                  i_datum_von       = w_vimimv-dmibeg
+                  i_kz_incl_bis     = 'X'
+                  i_kz_volle_monate = ' '
+             IMPORTING
+                  e_monate          = x_anz_monate.
+      ELSE.
+
+        CALL FUNCTION 'MONTHS_BETWEEN_TWO_DATES_NEW'
+             EXPORTING
+                  i_datum_bis       = w_vimimv-dmiend
+                  i_datum_von       = w_total-dmibeg
+                  i_kz_incl_bis     = 'X'
+                  i_kz_volle_monate = ' '
+             IMPORTING
+                  e_monate          = x_anz_monate.
+      ENDIF.
+* WO 2192 >>>
+
+*      MOVE x_anz_monate TO x_months.
+      COMPUTE x_months = trunc( x_anz_monate ).
+
+* WO 2161 <<<
+      COMPUTE x_resto = frac( x_anz_monate ).
+
+      IF NOT x_resto IS INITIAL.
+        ADD 1 TO x_months.
+      ENDIF.
+* WO 2161 >>>
+
+      ASSIGN COMPONENT 'BKOND' OF STRUCTURE <dyn_wa> TO <fs1>.
+      w_total-bkond = <fs1>.
+* WO 2187 <<<
+      MOVE w_total-bkond TO x_bkond.
+* WO 2187 >>>
+
+      ASSIGN COMPONENT 'LINEAR' OF STRUCTURE <dyn_wa> TO <fs1>.
+      IF x_months > 0.
+        DESCRIBE TABLE gh_geral LINES gi_linha.
+*        IF gi_linha > 60.
+*          gi_linha = 60.
+*        ENDIF.
+* >>> Alteração - Procwork - 09/11/2010 - Início
+**        <fs1> = w_total-bkond / x_months.
+*        <fs1> = w_total-bkond / gi_linha.
+        <fs1> = w_total-bkond / x_months.
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+      ELSE.
+        CLEAR <fs1>.
+      ENDIF.
+
+      READ TABLE t_total_old INTO w_total_old
+                        WITH KEY intreno = w_vimimv-intreno.
+
+      IF sy-subrc NE 0.
+        CLEAR w_total_old.
+      ENDIF.
+
+* WO 2161 <<<
+*      ASSIGN COMPONENT 'DELTA' OF STRUCTURE <dyn_wa> TO <fs1>.
+*      <fs1> = w_total_old-bkond.
+*
+*      ASSIGN COMPONENT 'CONTROL' OF STRUCTURE <dyn_wa> TO <fs1>.
+*      <fs1> = w_total-bkond - w_total_old-bkond.
+* WO 2161 >>>
+
+      ASSIGN COMPONENT 'RTYPE' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = 'F'.
+
+* WO 2187 <<<
+*      IF <fs1> EQ '0.00'.
+*        ASSIGN COMPONENT 'COLOR' OF STRUCTURE <dyn_wa> TO <fs1>.
+** Populate color variable with colour properties
+** Char 1 = C (This is a color property)
+** Char 2 = 3 (Color codes: 1 - 7)
+** Char 3 = Intensified on/off ( 1 or 0 )
+** Char 4 = Inverse display on/off ( 1 or 0 )
+**           i.e. wa_ekko-line_color = 'C410'
+*        CLEAR <fs1>.
+*      ELSE.
+*        ASSIGN COMPONENT 'ALT' OF STRUCTURE <dyn_wa> TO <fs1>.
+*        <fs1> = 'X'.
+*
+*        ASSIGN COMPONENT 'COLOR' OF STRUCTURE <dyn_wa> TO <fs1>.
+** Populate color variable with colour properties
+** Char 1 = C (This is a color property)
+** Char 2 = 3 (Color codes: 1 - 7)
+** Char 3 = Intensified on/off ( 1 or 0 )
+** Char 4 = Inverse display on/off ( 1 or 0 )
+**           i.e. wa_ekko-line_color = 'C410'
+*        CONCATENATE 'C' '7' '10' INTO <fs1>.
+*      ENDIF.
+* WO 2187 >>>
+
+
+* Alteração - Gabriel - 27/05/09
+
+*      SELECT SINGLE imkey
+*      INTO v_imkey
+*      FROM vimimv
+*      WHERE intreno EQ w_vimimv-intreno.
+*
+*      IF sy-subrc EQ 0.
+*
+*          SELECT dbervon
+*          INTO TABLE t_fat
+*          FROM vibepp
+*          WHERE imkey   EQ v_imkey
+*          AND ( sbewart EQ '0100'
+*          OR    sbewart EQ '4000'
+*          OR    sbewart EQ '4100' ).
+*
+*      ENDIF.
+*
+*      SORT t_fat BY dbervon ASCENDING.
+*
+*      READ TABLE t_fat INTO wa_fat INDEX 1.
+
+* Tempo Total de Contrato em Meses.
+      CALL FUNCTION 'MONTHS_BETWEEN_TWO_DATES_NEW'
+           EXPORTING
+                i_datum_bis       = w_total-dmiend
+                i_datum_von       = w_total-dmibeg
+                i_kz_incl_bis     = 'X'
+                i_kz_volle_monate = ' '
+           IMPORTING
+                e_monate          = v_mes_dif.
+
+
+      MOVE v_mes_dif TO v_mes_final.
+
+** Tempo entre o início do Contrato e o primeiro faturamento do mesmo
+*      CALL FUNCTION 'MONTHS_BETWEEN_TWO_DATES_NEW'
+*           EXPORTING
+*                i_datum_bis       = wa_fat-dbervon
+*                i_datum_von       = w_total-dmibeg
+*                i_kz_incl_bis     = 'X'
+*                i_kz_volle_monate = ' '
+*           IMPORTING
+*                e_monate          = v_mes_dif2.
+*
+*
+*      MOVE v_mes_dif2 TO v_mes_final2.
+
+* Numero de meses do contrato a partir do 1º Faturamento
+* x_months = v_mes_final.
+
+      x_months = v_mes_final.
+
+* Fim Alteração - Gabriel - 27/05/09
+
+      ASSIGN COMPONENT 'MONAT' OF STRUCTURE <dyn_wa> TO <fs1>.
+*      if w_total-bkond ne '0.00' and sy-subrc eq 0.
+* >>> Alteração - Procwork - 09/11/2010 - Início
+*      <fs1> = gi_linha."x_months.
+      <fs1> = x_months.
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+*      endif.
+
+      APPEND <dyn_wa> TO <dyn_table>.
+
+******* Linha Linearização *******
+* WO 2161 <<<
+      ASSIGN COMPONENT 'BKOND' OF STRUCTURE <dyn_wa> TO <fs1>.
+
+* Alteração - Gabriel - 19/06/09
+
+*      <fs1> = w_total_old-bkond.
+      <fs1> = x_bkond.
+
+*        x_months = v_mes_final.
+
+
+* Fim Alteração - Gabriel - 19/06/09
+
+* WO 2187 <<<
+      MOVE w_total_old-bkond TO x_bkond_old.
+
+      x_bkond = x_bkond - x_bkond_old.
+
+      IF x_bkond EQ '0.00'.
+        ASSIGN COMPONENT 'COLOR' OF STRUCTURE <dyn_wa> TO <fs1>.
+* Populate color variable with colour properties
+* Char 1 = C (This is a color property)
+* Char 2 = 3 (Color codes: 1 - 7)
+* Char 3 = Intensified on/off ( 1 or 0 )
+* Char 4 = Inverse display on/off ( 1 or 0 )
+*           i.e. wa_ekko-line_color = 'C410'
+        CLEAR <fs1>.
+      ELSE.
+        ASSIGN COMPONENT 'ALT' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = 'X'.
+
+        ASSIGN COMPONENT 'COLOR' OF STRUCTURE <dyn_wa> TO <fs1>.
+* Populate color variable with colour properties
+* Char 1 = C (This is a color property)
+* Char 2 = 3 (Color codes: 1 - 7)
+* Char 3 = Intensified on/off ( 1 or 0 )
+* Char 4 = Inverse display on/off ( 1 or 0 )
+*           i.e. wa_ekko-line_color = 'C410'
+        CONCATENATE 'C' '7' '10' INTO <fs1>.
+      ENDIF.
+* WO 2187 >>>
+
+* Alteração - Gabriel - 19/06/09
+
+      w_total_old-bkond = x_bkond + x_bkond_old.
+
+* Fim Alteração - Gabriel - 19/06/09
+
+* WO 2213 <<<
+*      ASSIGN COMPONENT 'LINEAR' OF STRUCTURE <dyn_wa> TO <fs1>.
+*      <fs1> = w_total_old-bkond / x_months.
+*
+*      ASSIGN COMPONENT 'CONTROL' OF STRUCTURE <dyn_wa> TO <fs1>.
+*      CLEAR <fs1>.
+* WO 2161 >>>
+
+      IF x_esp_cond IS INITIAL.
+        ASSIGN COMPONENT 'LINEAR' OF STRUCTURE <dyn_wa> TO <fs1>.
+        IF x_months > 0.
+
+* >>> Alteração - Procwork - 09/11/2010 - Início
+*          <fs1> = w_total_old-bkond / gi_linha."x_months.
+*
+*          gc_valor_inicial_mes = w_total_old-bkond / gi_linha."x_months
+          <fs1> = w_total_old-bkond / x_months.
+          gc_valor_inicial_mes = w_total_old-bkond / x_months.
+
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+        ELSE.
+          CLEAR <fs1>.
+        ENDIF.
+
+        ASSIGN COMPONENT 'ESP_COND' OF STRUCTURE <dyn_wa> TO <fs1>.
+        CLEAR <fs1>.
+      ELSE.
+        ASSIGN COMPONENT 'LINEAR' OF STRUCTURE <dyn_wa> TO <fs1>.
+        CLEAR <fs1>.
+
+        ASSIGN COMPONENT 'ESP_COND' OF STRUCTURE <dyn_wa> TO <fs1>.
+        <fs1> = 'X'.
+      ENDIF.
+* WO 2213 >>>
+
+      ASSIGN COMPONENT 'RTYPE' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = 'L'.
+
+      PERFORM clear_fs1.
+
+* Alteração - Lucas Leite
+* Transferir o conteudo da tabela vimi55 para uma auxiliar
+* Ordenar pela DGABANRT descending ai tem o data do 1º reajuste.
+* Comparar com o campo VIMI16-DANPASS jogar o valor no conteudo.
+* 12 e 8
+
+      CLEAR  gh_vimi55_aux[].
+      LOOP AT gh_vimi55 WHERE intreno EQ w_zcondsnapshots_aux-intreno.
+        gh_vimi55_aux = gh_vimi55.
+        APPEND gh_vimi55_aux.
+        CLEAR  gh_vimi55_aux.
+      ENDLOOP.
+
+*     SORT  gh_vimi55_aux BY danpab DESCENDING.
+      SORT  gh_vimi55_aux BY dgabanrt DESCENDING.
+
+* Data do reajuste
+      READ TABLE gh_vimi55_aux INDEX 1.
+      IF gh_vimi55_aux-dgabanrt EQ '00000000'.
+        SORT  gh_vimi55_aux BY danpnxt DESCENDING.
+        READ TABLE gh_vimi55_aux INDEX 1.
+      ENDIF.
+* DANPAB
+
+      gc_vimi55_aux = gh_vimi55_aux-danpab.
+
+      gc_ano = gh_vimi55_aux-danpab(4).
+      gc_mes = gh_vimi55_aux-danpab+4(2).
+* Data de reajuste inicial
+      CONCATENATE gh_vimi55_aux-danpab(4)
+      gh_vimi55_aux-danpab+4(2) '01' INTO gc_datavimi55.
+
+* >>> Alteração - Procwork - 09/11/2010 - Início
+*      gc_valor_inicial_mes = w_total_old-bkond / gi_linha."x_months.
+      gc_valor_inicial_mes = w_total_old-bkond / x_months.
+
+* <<< Alteração - procwork - 09/11/2010 - fim
+
+      gc_vez1 = 1.
+      CLEAR: gh_indice[], gh_indice.
+
+      CONCATENATE w_vimimv-dmibeg+4(2)  w_vimimv-dmibeg(4)
+       INTO x_mes_ano_aux.
+
+      CONCATENATE x_mes_ano_aux+2(4)  x_mes_ano_aux(2)
+        '01'  INTO gc_datames_ano.
+
+      IF gc_datavimi55 < gc_datames_ano.
+        gc_ano = gh_vimi55_aux-danpnxt(4).
+        gc_mes = gh_vimi55_aux-danpnxt+4(2).
+* Data de reajuste inicial
+        CONCATENATE gh_vimi55_aux-danpnxt(4)
+        gh_vimi55_aux-danpnxt+4(2) '01' INTO gc_datavimi55.
+      ENDIF.
+
+*     DO x_months TIMES.
+      DO gc_cont_aux TIMES.
+
+        CONCATENATE w_vimimv-dmibeg+4(2) '-'
+                    w_vimimv-dmibeg(4) INTO x_mes_ano.
+
+        CONCATENATE w_vimimv-dmibeg+4(2)  w_vimimv-dmibeg(4)
+         INTO x_mes_ano_aux.
+
+        ASSIGN COMPONENT x_mes_ano OF STRUCTURE <dyn_wa> TO <fs1>.
+
+        IF sy-subrc EQ 0.
+          IF w_vimimv-dmibeg(6) = w_total-dmiend(6).
+            IF w_vimimv-dmibeg+6(2) > w_total-dmiend+6(2).
+              w_total-dmiend+6(2) = 02.
+              w_vimimv-dmibeg+6(2) = 01.
+            ENDIF.
+          ENDIF.
+* WO 2213 <<<
+*          <fs1> = w_total_old-bkond / x_months.
+* WO 2213 <<<
+          IF x_esp_cond IS INITIAL.
+* Alteração - Lucas Leite  - 24-06-2010.
+            IF w_vimimv-dmibeg GE w_total-dmiend.
+              CLEAR <fs1>.
+            ELSEIF w_vimimv-dmibeg LT w_total-dmibeg.
+              CLEAR <fs1>.
+            ELSE.
+* Para o contato 379 a data de Linerialização fica inválida, sendo
+*assim o relatorio não apresenta a linha da lineliarização.
+* Acumulativo de mês
+              ADD 1 TO gc_cont_mes.
+* Data do processamento
+              CONCATENATE x_mes_ano_aux+2(4)  x_mes_ano_aux(2)
+                '01'  INTO gc_datames_ano.
+
+              IF ( gc_datames_ano < gc_datavimi55 ).
+                CLEAR gh_geral.
+                READ TABLE gh_geral WITH KEY data = gc_datames_ano.
+                IF sy-subrc EQ 0.
+                  IF gc_data_cancelamento NE '00000000'.
+                    IF gc_datames_ano <= gc_data_cancelamento.
+                      gi_tabix = sy-tabix.
+                      gh_geral-valor_linha2 = gc_valor_inicial_mes.
+                      MODIFY gh_geral INDEX gi_tabix.
+
+                      IF gc_cond_mist = 1 AND gh_geral-item EQ '0010'.
+                        <fs1> = gc_valor_inicial_mes.
+                      ENDIF.
+
+                      IF gc_cond_mist = 2 AND gh_geral-item EQ '0010'.
+                        <fs1> = gc_valor_inicial_mes.
+                    ELSEIF gc_cond_mist = 2 AND gh_geral-item NE '0010'.
+                        <fs1> = gc_valor_inicial_mes_400.
+                      ENDIF.
+                    ENDIF.
+                  ELSE.
+
+                    gi_tabix = sy-tabix.
+                    gh_geral-valor_linha2 = gc_valor_inicial_mes.
+                    MODIFY gh_geral INDEX gi_tabix.
+
+                    IF gc_cond_mist = 1 AND gh_geral-item EQ '0010'.
+                      IF gh_geral-valor_linha1 = '0.00'.
+                        READ TABLE gh_geral_0400 WITH KEY
+                               data = gc_datames_ano.
+                        IF sy-subrc EQ 0.
+                          IF gh_geral_0400-valor_linha1 NE '0.00'.
+                          ELSE.
+                            <fs1> = gc_valor_inicial_mes.
+                          ENDIF.
+                        ELSE.
+                          <fs1> = gc_valor_inicial_mes.
+                        ENDIF.
+                      ELSE.
+                        <fs1> = gc_valor_inicial_mes.
+                      ENDIF.
+                    ENDIF.
+
+                    IF gc_cond_mist = 2 AND gh_geral-item EQ '0010'.
+                      <fs1> = gc_valor_inicial_mes.
+                    ELSEIF gc_cond_mist = 2 AND gh_geral-item NE '0010'.
+                      <fs1> = gc_valor_inicial_mes_400.
+                    ENDIF.
+                  ENDIF.
+                ENDIF.
+              ELSE.
+
+* Valor do indice.
+                IF NOT gc_datavimi55 IS INITIAL.
+                  lc_ano =  gc_ano.                         " - 1.
+                  SELECT SINGLE indproz FROM t094p INTO lc_indproz
+                              WHERE wbind EQ gh_vimi55_aux-sindart
+                                           AND indjhr EQ lc_ano
+                                       AND indmon EQ gc_mes.
+                  IF sy-subrc EQ 0.
+                    SUBTRACT 1 FROM lc_ano .
+                   SELECT SINGLE indproz FROM t094p INTO lc_indproz_old
+                                   WHERE wbind EQ gh_vimi55_aux-sindart
+                                                   AND indjhr EQ lc_ano
+                                                   AND indmon EQ gc_mes.
+
+                    IF sy-subrc EQ 0.
+                lc_percentual = ( lc_indproz - lc_indproz_old ) * 100 /
+                                                         lc_indproz_old.
+                    ENDIF.
+                  ENDIF.
+                ENDIF.
+                CLEAR: gc_contador, gc_valor_total_prc, gc_vlr_perc_mes,
+                                      gc_datum_aux.
+                CONCATENATE sy-datum(6) '01' INTO gc_datum_aux.
+                gc_percentual = lc_percentual.
+                IF gc_percentual CA '-'.
+                ELSE.
+                  IF gc_datavimi55 <= gc_datum_aux.
+                    ADD 1 TO gh_indice-seq.
+                    gh_indice-indice = lc_percentual.
+                    APPEND gh_indice.
+                    CLEAR: gh_indice, gi_tabix.
+
+* Calcula o valor do indice a ser somado...
+* Cálculo da Linealização
+                    LOOP AT gh_geral WHERE data >= gc_datavimi55.
+                      CLEAR:  gc_valor_percentual, gc_controla_12.
+                      gi_tabix = sy-tabix.
+                      IF gh_geral-valor_linha1 NE ''.
+
+                        gc_valor_percentual_  = gh_geral-valor_linha3.
+
+                        IF ( gc_cond_mist = 1 ) OR
+                     ( gc_cond_mist = 2 AND gh_geral-item EQ '0010' ).
+
+                          SORT gh_indice BY seq ASCENDING.
+                          LOOP AT gh_indice.
+                            gc_valor_percentual =
+            ( gc_valor_percentual_ * gh_indice-indice ) / 100.
+
+                            gc_valor_percentual1 =
+                   gc_valor_percentual_ + gc_valor_percentual.
+
+                            gc_valor_percentual =
+                  gc_valor_percentual1 - gc_valor_percentual_.
+
+                            gc_valor_percentual_ = gc_valor_percentual1.
+                          ENDLOOP.
+                          gc_valor_total_prc  =
+                     gc_valor_total_prc + gc_valor_percentual.
+                          ADD 1 TO gc_contador.
+                        ENDIF.
+                      ELSE.
+                        IF gc_data_cancelamento NE '00000000'.
+                          IF gc_datames_ano <= gc_data_cancelamento.
+                            READ TABLE gh_geral WITH KEY
+                            data = gc_datames_ano.
+                           IF sy-subrc EQ 0 AND gh_geral-item NE '0400'.
+                              <fs1> = gc_valor_inicial_mes.
+                            ENDIF.
+                          ENDIF.
+                        ELSE.
+
+                     READ TABLE gh_geral WITH KEY data = gc_datames_ano.
+                          IF sy-subrc EQ 0 AND gh_geral-item NE '0400'.
+                            IF gh_geral-valor_linha1 = '0.00'.
+                              READ TABLE gh_geral_0400 WITH KEY
+                                     data = gc_datames_ano.
+                              IF sy-subrc EQ 0.
+                                IF gh_geral_0400-valor_linha1 NE '0.00'.
+                                ELSE.
+                                  <fs1> = gc_valor_inicial_mes.
+                                ENDIF.
+                              ELSE.
+                                <fs1> = gc_valor_inicial_mes.
+                              ENDIF.
+                            ELSE.
+                              <fs1> = gc_valor_inicial_mes.
+                            ENDIF.
+                          ENDIF.
+                        ENDIF.
+                      ENDIF.
+                    ENDLOOP.
+
+                    IF sy-subrc EQ 0.
+                     gc_vlr_perc_mes = gc_valor_total_prc / gc_contador.
+                      gc_valor_inicial_mes =
+                     gc_valor_inicial_mes + gc_vlr_perc_mes.
+
+                      LOOP AT gh_geral WHERE data >= gc_datavimi55.
+                        CLEAR  gc_valor_percentual.
+                        IF gh_geral-valor_linha1 NE ''.
+                          gi_tabix  = sy-tabix.
+                          gh_geral-valor_linha2  = gc_valor_inicial_mes.
+                          MODIFY gh_geral INDEX gi_tabix .
+                        ENDIF.
+                      ENDLOOP.
+                      IF gc_data_cancelamento NE '00000000'.
+                        IF gc_datames_ano <= gc_data_cancelamento.
+                          <fs1> = gc_valor_inicial_mes.
+                          gc_vez1 = 2.
+                        ENDIF.
+                      ELSE.
+                        READ TABLE gh_geral WITH KEY
+                            data = gc_datames_ano.
+                        IF sy-subrc EQ 0 AND gh_geral-item NE '0400'.
+                          IF gh_geral-valor_linha1 = '0.00'.
+                            READ TABLE gh_geral_0400 WITH KEY
+                                   data = gc_datames_ano.
+                            IF sy-subrc EQ 0.
+                              IF gh_geral_0400-valor_linha1 NE '0.00'.
+                              ELSE.
+                                <fs1> = gc_valor_inicial_mes.
+                              ENDIF.
+                            ELSE.
+                              <fs1> = gc_valor_inicial_mes.
+                            ENDIF.
+                          ELSE.
+                            <fs1> = gc_valor_inicial_mes.
+                          ENDIF.
+                        ENDIF.
+                        gc_vez1 = 2.
+                      ENDIF.
+                    ENDIF.
+                  ELSE.
+                    IF gc_data_cancelamento NE '00000000'.
+                      IF gc_datames_ano <= gc_data_cancelamento.
+                        READ TABLE gh_geral WITH KEY
+                        data = gc_datames_ano.
+                        IF sy-subrc EQ 0.
+                          <fs1> = gc_valor_inicial_mes.
+                        ENDIF.
+                      ENDIF.
+                    ELSE.
+                     READ TABLE gh_geral WITH KEY data = gc_datames_ano.
+                      IF sy-subrc EQ 0 AND gh_geral-item NE '0400'.
+                        IF gh_geral-valor_linha1 = '0.00'.
+                          READ TABLE gh_geral_0400 WITH KEY
+                                 data = gc_datames_ano.
+                          IF sy-subrc EQ 0.
+                            IF gh_geral_0400-valor_linha1 NE '0.00'.
+                            ELSE.
+                              <fs1> = gc_valor_inicial_mes.
+                            ENDIF.
+                          ELSE.
+                            <fs1> = gc_valor_inicial_mes.
+                          ENDIF.
+*                        ELSE.
+*                          <fs1> = gc_valor_inicial_mes.
+                        ENDIF.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+                ENDIF.
+                IF gc_datames_ano = gc_datavimi55.
+                  gc_ano = gc_datavimi55(4) + 1.
+                  CONCATENATE gc_ano gc_datavimi55+4(2)
+                  gc_datavimi55+6(2) INTO gc_datavimi55.
+                  IF gc_data_cancelamento NE '00000000'.
+                    IF gc_datames_ano <= gc_data_cancelamento.
+                      READ TABLE gh_geral WITH KEY
+                                data = gc_datames_ano.
+                      IF sy-subrc EQ 0 AND gh_geral-item NE '0400'.
+                        <fs1> = gc_valor_inicial_mes.
+                      ENDIF.
+
+                    ENDIF.
+                  ELSE.
+                    READ TABLE gh_geral WITH KEY
+                                  data = gc_datames_ano.
+                    IF sy-subrc EQ 0 AND gh_geral-item NE '0400'.
+                      READ TABLE gh_geral_0400 WITH KEY
+                                  data = gc_datames_ano.
+                      IF sy-subrc EQ 0.
+                        IF gh_geral_0400-valor_linha1 NE '0.00'.
+                        ELSE.
+                          <fs1> = gc_valor_inicial_mes.
+                        ENDIF.
+                      ELSE.
+                        <fs1> = gc_valor_inicial_mes.
+                      ENDIF.
+*                    ELSE.
+*                      <fs1> = gc_valor_inicial_mes.
+                    ENDIF.
+                  ENDIF.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+*      ENDIF.
+*    ENDIF.
+* WO 2213 >>>
+*  ELSE.
+**          CLEAR <fs1>.
+*  ENDIF.
+
+* Valores dos reajustes
+* Primeiro reajuste
+        CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+             EXPORTING
+                  months  = '1'
+                  olddate = w_vimimv-dmibeg
+             IMPORTING
+                  newdate = w_vimimv-dmibeg.
+
+      ENDDO.
+
+
+
+* >>> Alteração - Procwork - 09/11/2010 - Início
+      DATA: vl_dias(2)     TYPE n.
+
+* Altera valor da data de início do contrato
+      READ TABLE gh_geral WITH KEY data(06) = w_total-dmibeg(06).
+
+      IF sy-subrc IS INITIAL.
+
+        CONCATENATE w_total-dmibeg+4(2) '-'
+                    w_total-dmibeg(4) INTO x_mes_ano.
+
+        ASSIGN COMPONENT x_mes_ano OF STRUCTURE <dyn_wa> TO <fs1>.
+
+        gi_tabix = sy-tabix.
+
+        CLEAR vl_dias.
+
+        IF w_total-dmibeg+6(02) = '30' OR
+           w_total-dmibeg+6(02) = '31'.
+
+          vl_dias = 1.
+
+        ELSE.
+
+          vl_dias = ( 30 - w_total-dmibeg+6(02) ) + 1.
+
+        ENDIF.
+
+* Primeiro mes
+        gh_geral-valor_linha2 =
+                  ( ( w_total_old-bkond / x_months ) / 30 ) *
+                  ( vl_dias ).
+
+        MODIFY gh_geral INDEX gi_tabix.
+
+        <fs1> = gh_geral-valor_linha2.
+
+      ENDIF.
+
+* Altera valor da data final do contrato
+      READ TABLE gh_geral WITH KEY data(06) = w_vimimv-dmiend(06).
+
+      IF sy-subrc IS INITIAL.
+
+        CONCATENATE w_vimimv-dmiend+4(2) '-'
+                    w_vimimv-dmiend(4) INTO x_mes_ano.
+
+        ASSIGN COMPONENT x_mes_ano OF STRUCTURE <dyn_wa> TO <fs1>.
+
+        gi_tabix = sy-tabix.
+
+* Ultimo mes
+        IF w_vimimv-dmiend+6(02) = '31'.
+
+          gh_geral-valor_linha2 =
+                    ( gc_valor_inicial_mes / 31 ) *
+                    ( w_vimimv-dmiend+6(02) ).
+
+        ELSE.
+
+          gh_geral-valor_linha2 =
+                    ( gc_valor_inicial_mes / 30 ) *
+                    ( w_vimimv-dmiend+6(02) ).
+
+        ENDIF.
+
+        MODIFY gh_geral INDEX gi_tabix.
+
+        <fs1> = gh_geral-valor_linha2.
+
+      ENDIF.
+
+* <<< Alteração - procwork - 09/11/2010 - fim
+
+
+
+* WO 2161 <<<
+      IF w_total-dmibeg GT '20061031'.
+        IF NOT x_resto IS INITIAL.
+          CLEAR <fs1>.
+        ENDIF.
+      ENDIF.
+      CLEAR x_resto.
+* WO 2161 >>>
+
+      APPEND <dyn_wa> TO <dyn_table>.
+
+* Alteração Lucas Leite - Construção da Linha Nova de diferença.
+      SORT gh_geral BY data ASCENDING.
+
+      READ TABLE t_vimimv INTO w_vimimv
+            WITH KEY intreno = w_zcondsnapshots_aux-intreno.
+
+      CLEAR <dyn_wa>.
+      ASSIGN COMPONENT 'BUKRS' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = w_total-bukrs.
+
+      ASSIGN COMPONENT 'SWENR' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = w_total-swenr.
+
+      ASSIGN COMPONENT 'SMIVE' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = w_total-smive.
+
+      ASSIGN COMPONENT 'SMENR' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = w_total-smenr.
+
+      ASSIGN COMPONENT 'ZZNMFAN' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = w_total-zznmfan.
+
+      ASSIGN COMPONENT 'ALT' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = 'X'.
+
+      ASSIGN COMPONENT 'DMIBEG' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = w_total-dmibeg.
+
+      ASSIGN COMPONENT 'DMIEND' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = w_total-dmiend.
+
+      ASSIGN COMPONENT 'P_DATE_N' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = p_date_n.
+
+      ASSIGN COMPONENT 'LAST_ACT' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = x_danpass.
+
+      ASSIGN COMPONENT 'BKOND' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = w_total-bkond.
+
+      ASSIGN COMPONENT 'MONAT' OF STRUCTURE <dyn_wa> TO <fs1>.
+* >>> Alteração - Procwork - 09/11/2010 - Início
+*      <fs1> = gi_linha."x_months.
+      <fs1> = x_months.
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+      ASSIGN COMPONENT 'LINEAR' OF STRUCTURE <dyn_wa> TO <fs1>.
+      IF x_months > 0.
+
+* >>> Alteração - Procwork - 09/11/2010 - Início
+*        <fs1> = w_total-bkond / gi_linha."x_months.
+        <fs1> = w_total-bkond / x_months.
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+      ELSE.
+        CLEAR <fs1>.
+      ENDIF.
+
+      ASSIGN COMPONENT 'LAST_MOD' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = w_vimimv-dbear.
+
+      ASSIGN COMPONENT 'CREATE_DATE' OF STRUCTURE <dyn_wa> TO <fs1>.
+      <fs1> = w_vimimv-derf.
+
+      DESCRIBE TABLE gh_geral LINES gi_lines.
+      IF x_months < gi_lines.
+        x_months = gi_lines.
+      ENDIF.
+
+* >>> Alteração Valor corte contrato - SondaProcwork - 06/01/11 - Início
+* Armazena a data de corte
+      CLEAR: gh_geral_0400, vl_tot_aux.
+      READ TABLE gh_geral_0400 INDEX 1.
+
+      IF sy-subrc IS INITIAL.
+
+        CLEAR vl_data_corte.
+        CONCATENATE gh_geral_0400-data+4(02)
+                    gh_geral_0400-data(04)
+               INTO vl_data_corte.
+
+      ENDIF.
+* <<< Alteração Valor corte contrato - SondaProcwork - 06/01/11 - Fim
+
+      DO x_months TIMES.
+
+        CONCATENATE w_vimimv-dmibeg+4(2) '-'
+                    w_vimimv-dmibeg(4) INTO x_mes_ano.
+
+        CONCATENATE w_vimimv-dmibeg+4(2)  w_vimimv-dmibeg(4)
+         INTO x_mes_ano_aux.
+
+        ASSIGN COMPONENT x_mes_ano OF STRUCTURE <dyn_wa> TO <fs1>.
+
+        IF sy-subrc EQ 0.
+          IF x_esp_cond IS INITIAL.
+            IF w_vimimv-dmibeg(6) = w_total-dmiend(6).
+              IF w_vimimv-dmibeg+6(2) > w_total-dmiend+6(2).
+                w_total-dmiend+6(2) = 02.
+                w_vimimv-dmibeg+6(2) = 01.
+              ENDIF.
+            ENDIF.
+
+            IF w_vimimv-dmibeg GE w_total-dmiend.
+              CLEAR <fs1>.
+            ELSEIF w_vimimv-dmibeg LT w_total-dmibeg.
+              CLEAR <fs1>.
+            ELSE.
+              CONCATENATE x_mes_ano_aux+2(4)  x_mes_ano_aux(2)
+                '01'  INTO gc_datames_ano.
+              CLEAR: <fs1>, gh_geral.
+              READ TABLE gh_geral WITH KEY data = gc_datames_ano.
+              IF sy-subrc EQ 0 AND gh_geral-item NE '0400'.
+                "AND  gh_geral-valor_linha1 NE ''.
+                IF gh_geral-valor_linha1 >= 0.
+                  IF gc_data_cancelamento NE '00000000'.
+                    IF gc_datames_ano > gc_data_cancelamento.
+                      IF gc_soma_diferenca NE '0.00'.
+                        CLEAR gc_sinal.
+                        gc_sinal = gc_soma_diferenca.
+                        IF gc_sinal CA '-'.
+                        ELSE.
+                          gc_soma_diferenca = gc_soma_diferenca * -1.
+                        ENDIF.
+                        <fs1> = gc_soma_diferenca.
+                        CLEAR gc_soma_diferenca.
+                      ENDIF.
+                    ELSEIF gc_datames_ano  <= gc_data_cancelamento.
+                  <fs1> = gh_geral-valor_linha2 - gh_geral-valor_linha1.
+                      gc_soma_diferenca1 =
+                        gh_geral-valor_linha2 - gh_geral-valor_linha1.
+                      gc_soma_diferenca =
+                          gc_soma_diferenca +  gc_soma_diferenca1.
+                    ENDIF.
+                  ELSE.
+                    IF gh_geral-valor_linha1 = '0.00'.
+                      READ TABLE gh_geral_0400 WITH KEY
+                             data = gc_datames_ano.
+                      IF sy-subrc EQ 0.
+                        IF gh_geral_0400-valor_linha1 NE '0.00'.
+                        ELSE.
+                          <fs1> =
+                        gh_geral-valor_linha2 - gh_geral-valor_linha1.
+                        ENDIF.
+                      ELSE.
+                        <fs1> =
+                        gh_geral-valor_linha2 - gh_geral-valor_linha1.
+                      ENDIF.
+                    ELSE.
+                  <fs1> = gh_geral-valor_linha2 - gh_geral-valor_linha1.
+                    ENDIF.
+                  ENDIF.
+                ELSE.
+                  <fs1> = gh_geral-valor_linha2.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+        CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+             EXPORTING
+                  months  = '1'
+                  olddate = w_vimimv-dmibeg
+             IMPORTING
+                  newdate = w_vimimv-dmibeg.
+
+* >>> Alteração Valor corte contrato - SondaProcwork - 06/01/11 - Início
+* Soma os valores, mas se for a data de corte, joga o valor somado para
+* o campo
+        IF x_mes_ano_aux <> vl_data_corte(06).
+
+          vl_tot_aux = vl_tot_aux + <fs1>.
+
+        ELSE.
+
+          IF <fs1> = '0.00'.
+
+            vl_tot_aux = -1 * vl_tot_aux.
+            <fs1> = vl_tot_aux.
+
+          ENDIF.
+
+        ENDIF.
+* <<< Alteração Valor corte contrato - SondaProcwork - 06/01/11 - Fim
+
+      ENDDO.
+
+      APPEND <dyn_wa> TO <dyn_table>.
+
+      CLEAR: x_danpass, gc_soma_diferenca1, gc_soma_diferenca.
+
+* Somente para a condição 0400 e 0100 juntas.
+      IF NOT gh_geral_0400[] IS INITIAL.
+
+        CLEAR w_total-bkond.
+
+        LOOP AT gh_geral_0400.
+          IF gh_geral_0400-item EQ '0400'.
+            w_total-bkond = w_total-bkond + gh_geral_0400-valor_linha1.
+          ELSE.
+            w_total-bkond = w_total-bkond - gh_geral_0400-valor_linha1.
+          ENDIF.
+        ENDLOOP.
+
+        DELETE gh_geral_0400 WHERE item <> '0400'. CLEAR gi_linha.
+        DESCRIBE TABLE gh_geral_0400 LINES gi_linha.
+
+        SORT gh_geral_0400 BY data.
+        READ TABLE gh_geral_0400 INDEX 1.
+        w_vimimv-dmibeg = gh_geral_0400-data.
+
+        IF fieldcat_0400[] IS INITIAL.
+          PERFORM z_constroi_fieldcat.
+        ENDIF.
+        x_months = gi_linha.
+        CREATE DATA new_line LIKE LINE OF <dyn_table1>.
+        ASSIGN new_line->* TO <dyn_wa1>.
+
+        CLEAR <dyn_wa>.
+        ASSIGN COMPONENT 'BUKRS' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-bukrs.
+
+        ASSIGN COMPONENT 'SWENR' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-swenr.
+
+        ASSIGN COMPONENT 'SMIVE' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-smive.
+
+        ASSIGN COMPONENT 'SMENR' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-smenr.
+
+        ASSIGN COMPONENT 'ZZNMFAN' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-zznmfan.
+
+        ASSIGN COMPONENT 'ALT' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = 'X'.
+
+        ASSIGN COMPONENT 'DMIBEG' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-dmibeg.
+
+        ASSIGN COMPONENT 'DMIEND' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-dmiend.
+
+        ASSIGN COMPONENT 'P_DATE_N' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = p_date_n.
+
+        ASSIGN COMPONENT 'LAST_ACT' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = x_danpass.
+
+        ASSIGN COMPONENT 'BKOND' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-bkond.
+
+        ASSIGN COMPONENT 'MONAT' OF STRUCTURE <dyn_wa1> TO <fs1>.
+
+* >>> Alteração - procwork - 09/11/2010 - início
+*        <fs1> = gi_linha."x_months.
+        <fs1> = x_months.
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+        ASSIGN COMPONENT 'LINEAR' OF STRUCTURE <dyn_wa1> TO <fs1>.
+
+        IF x_months > 0.
+
+* >>> Alteração - Procwork - 09/11/2010 - Início
+*          <fs1> = w_total-bkond / gi_linha."x_months.
+*
+*          gc_media = w_total-bkond / gi_linha."x_months.
+          <fs1> = w_total-bkond / x_months.
+
+          gc_media = w_total-bkond / x_months.
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+        ELSE.
+          CLEAR <fs1>.
+        ENDIF.
+
+        ASSIGN COMPONENT 'LAST_MOD' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_vimimv-dbear.
+
+        ASSIGN COMPONENT 'CREATE_DATE' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_vimimv-derf.
+
+*     ASSIGN COMPONENT 'MONTHS' OF STRUCTURE <dyn_wa> TO <fs1>.
+*      <fs1> = x_months.
+
+*gc_cont_aux
+        DO x_months TIMES.
+
+          CONCATENATE w_vimimv-dmibeg+4(2) '-'
+                      w_vimimv-dmibeg(4) INTO x_mes_ano.
+
+          CONCATENATE w_vimimv-dmibeg+4(2)  w_vimimv-dmibeg(4)
+           INTO x_mes_ano_aux.
+
+          ASSIGN COMPONENT x_mes_ano OF STRUCTURE <dyn_wa1> TO <fs1>.
+
+          IF sy-subrc EQ 0.
+            IF x_esp_cond IS INITIAL.
+              IF w_vimimv-dmibeg(6) = w_total-dmiend(6).
+                IF w_vimimv-dmibeg+6(2) > w_total-dmiend+6(2).
+                  w_total-dmiend+6(2) = 02.
+                  w_vimimv-dmibeg+6(2) = 01.
+                ENDIF.
+              ENDIF.
+
+              IF w_vimimv-dmibeg GE w_total-dmiend.
+                CLEAR <fs1>.
+              ELSEIF w_vimimv-dmibeg LT w_total-dmibeg.
+                CLEAR <fs1>.
+              ELSE.
+                CONCATENATE x_mes_ano_aux+2(4)  x_mes_ano_aux(2)
+                  '01'  INTO gc_datames_ano.
+
+                READ TABLE gh_geral_0400 WITH KEY data = gc_datames_ano.
+                IF sy-subrc EQ 0 ."AND  gh_geral-valor_linha1 NE ''.
+*                IF gh_geral-valor_linha1 >= 0.
+                  <fs1> = gh_geral_0400-valor_linha1.
+*"gh_geral-valor_linha2 - gh_geral-valor_linha1
+*                  .
+*                ELSE.
+*                  <fs1> = gh_geral-valor_linha2.
+*                ENDIF.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+          CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+               EXPORTING
+                    months  = '1'
+                    olddate = w_vimimv-dmibeg
+               IMPORTING
+                    newdate = w_vimimv-dmibeg.
+        ENDDO.
+
+        APPEND <dyn_wa1> TO <dyn_table1>.
+
+        CLEAR <dyn_wa>.
+        ASSIGN COMPONENT 'BUKRS' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-bukrs.
+
+        ASSIGN COMPONENT 'SWENR' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-swenr.
+
+        ASSIGN COMPONENT 'SMIVE' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-smive.
+
+        ASSIGN COMPONENT 'SMENR' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-smenr.
+
+        ASSIGN COMPONENT 'ZZNMFAN' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-zznmfan.
+
+        ASSIGN COMPONENT 'ALT' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = 'X'.
+
+        ASSIGN COMPONENT 'DMIBEG' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-dmibeg.
+
+        ASSIGN COMPONENT 'DMIEND' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-dmiend.
+
+        ASSIGN COMPONENT 'P_DATE_N' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = p_date_n.
+
+        ASSIGN COMPONENT 'LAST_ACT' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = x_danpass.
+
+        ASSIGN COMPONENT 'BKOND' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-bkond.
+
+        ASSIGN COMPONENT 'MONAT' OF STRUCTURE <dyn_wa1> TO <fs1>.
+
+* >>> Alteração - Procwork - 09/11/2010 - Início
+*        <fs1> = gi_linha."x_months.
+        <fs1> = x_months.
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+        ASSIGN COMPONENT 'LINEAR' OF STRUCTURE <dyn_wa1> TO <fs1>.
+
+        IF x_months > 0.
+
+* >>> Alteração - Procwork - 09/11/2010 - Início
+*          <fs1> = w_total-bkond / gi_linha."x_months.
+*          gc_media = w_total-bkond / gi_linha."x_months.
+          <fs1> = w_total-bkond / x_months.
+          gc_media = w_total-bkond / x_months.
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+        ELSE.
+          CLEAR <fs1>.
+        ENDIF.
+
+        ASSIGN COMPONENT 'LAST_MOD' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_vimimv-dbear.
+
+        ASSIGN COMPONENT 'CREATE_DATE' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_vimimv-derf.
+
+*     ASSIGN COMPONENT 'MONTHS' OF STRUCTURE <dyn_wa> TO <fs1>.
+*      <fs1> = x_months.
+        SORT gh_geral_0400 BY data.
+        READ TABLE gh_geral_0400 INDEX 1.
+        w_vimimv-dmibeg = gh_geral_0400-data.
+
+        DO x_months TIMES.
+
+          CONCATENATE w_vimimv-dmibeg+4(2) '-'
+                      w_vimimv-dmibeg(4) INTO x_mes_ano.
+
+          CONCATENATE w_vimimv-dmibeg+4(2)  w_vimimv-dmibeg(4)
+           INTO x_mes_ano_aux.
+
+          ASSIGN COMPONENT x_mes_ano OF STRUCTURE <dyn_wa1> TO <fs1>.
+
+          IF sy-subrc EQ 0.
+            IF x_esp_cond IS INITIAL.
+              IF w_vimimv-dmibeg(6) = w_total-dmiend(6).
+                IF w_vimimv-dmibeg+6(2) > w_total-dmiend+6(2).
+                  w_total-dmiend+6(2) = 02.
+                  w_vimimv-dmibeg+6(2) = 01.
+                ENDIF.
+              ENDIF.
+
+              IF w_vimimv-dmibeg GE w_total-dmiend.
+                CLEAR <fs1>.
+              ELSEIF w_vimimv-dmibeg LT w_total-dmibeg.
+                CLEAR <fs1>.
+              ELSE.
+                CONCATENATE x_mes_ano_aux+2(4)  x_mes_ano_aux(2)
+                  '01'  INTO gc_datames_ano.
+
+                READ TABLE gh_geral_0400 WITH KEY data = gc_datames_ano.
+                IF sy-subrc EQ 0 ."AND  gh_geral-valor_linha1 NE ''.
+*                IF gh_geral-valor_linha1 >= 0.
+                  <fs1> = gc_media.
+*"gh_geral-valor_linha2 - gh_geral-valor_linha1
+*                  .
+*                ELSE.
+*                  <fs1> = gh_geral-valor_linha2.
+*                ENDIF.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+          CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+               EXPORTING
+                    months  = '1'
+                    olddate = w_vimimv-dmibeg
+               IMPORTING
+                    newdate = w_vimimv-dmibeg.
+        ENDDO.
+
+        APPEND <dyn_wa1> TO <dyn_table1>.
+
+
+        CLEAR <dyn_wa1>.
+        ASSIGN COMPONENT 'BUKRS' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-bukrs.
+
+        ASSIGN COMPONENT 'SWENR' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-swenr.
+
+        ASSIGN COMPONENT 'SMIVE' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-smive.
+
+        ASSIGN COMPONENT 'SMENR' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-smenr.
+
+        ASSIGN COMPONENT 'ZZNMFAN' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-zznmfan.
+
+        ASSIGN COMPONENT 'ALT' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = 'X'.
+
+        ASSIGN COMPONENT 'DMIBEG' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-dmibeg.
+
+        ASSIGN COMPONENT 'DMIEND' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-dmiend.
+
+        ASSIGN COMPONENT 'P_DATE_N' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = p_date_n.
+
+        ASSIGN COMPONENT 'LAST_ACT' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = x_danpass.
+
+        ASSIGN COMPONENT 'BKOND' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_total-bkond.
+
+        ASSIGN COMPONENT 'MONAT' OF STRUCTURE <dyn_wa1> TO <fs1>.
+
+* >>> Alteração - Procwork - 09/11/2010 - Início
+*        <fs1> = gi_linha."x_months.
+        <fs1> = x_months.
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+        ASSIGN COMPONENT 'LINEAR' OF STRUCTURE <dyn_wa1> TO <fs1>.
+
+        IF x_months > 0.
+
+* >>> Alteração - Procwork - 09/11/2010 - Início
+*          <fs1> = w_total-bkond / gi_linha."x_months.
+*          gc_media = w_total-bkond / gi_linha."x_months.
+          <fs1> = w_total-bkond / x_months.
+          gc_media = w_total-bkond / x_months.
+* <<< Alteração - Procwork - 09/11/2010 - Fim
+
+        ELSE.
+          CLEAR <fs1>.
+        ENDIF.
+
+        ASSIGN COMPONENT 'LAST_MOD' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_vimimv-dbear.
+
+        ASSIGN COMPONENT 'CREATE_DATE' OF STRUCTURE <dyn_wa1> TO <fs1>.
+        <fs1> = w_vimimv-derf.
+
+*     ASSIGN COMPONENT 'MONTHS' OF STRUCTURE <dyn_wa> TO <fs1>.
+*      <fs1> = x_months.
+        SORT gh_geral_0400 BY data.
+        READ TABLE gh_geral_0400 INDEX 1.
+        w_vimimv-dmibeg = gh_geral_0400-data.
+
+        DO x_months TIMES.
+
+          CONCATENATE w_vimimv-dmibeg+4(2) '-'
+                      w_vimimv-dmibeg(4) INTO x_mes_ano.
+
+          CONCATENATE w_vimimv-dmibeg+4(2)  w_vimimv-dmibeg(4)
+           INTO x_mes_ano_aux.
+
+          ASSIGN COMPONENT x_mes_ano OF STRUCTURE <dyn_wa1> TO <fs1>.
+
+          IF sy-subrc EQ 0.
+            IF x_esp_cond IS INITIAL.
+              IF w_vimimv-dmibeg(6) = w_total-dmiend(6).
+                IF w_vimimv-dmibeg+6(2) > w_total-dmiend+6(2).
+                  w_total-dmiend+6(2) = 02.
+                  w_vimimv-dmibeg+6(2) = 01.
+                ENDIF.
+              ENDIF.
+              IF w_vimimv-dmibeg GE w_total-dmiend.
+                CLEAR <fs1>.
+              ELSEIF w_vimimv-dmibeg LT w_total-dmibeg.
+                CLEAR <fs1>.
+              ELSE.
+                CONCATENATE x_mes_ano_aux+2(4)  x_mes_ano_aux(2)
+                  '01'  INTO gc_datames_ano.
+
+                READ TABLE gh_geral_0400 WITH KEY data = gc_datames_ano.
+                IF sy-subrc EQ 0 ."AND  gh_geral-valor_linha1 NE ''.
+*                IF gh_geral-valor_linha1 >= 0.
+                  <fs1> = gc_media - gh_geral_0400-valor_linha1.
+*"gh_geral-valor_linha2 - gh_geral-valor_linha1
+*                  .
+*                ELSE.
+*                  <fs1> = gh_geral-valor_linha2.
+*                ENDIF.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+          CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+               EXPORTING
+                    months  = '1'
+                    olddate = w_vimimv-dmibeg
+               IMPORTING
+                    newdate = w_vimimv-dmibeg.
+        ENDDO.
+        APPEND <dyn_wa1> TO <dyn_table1>.
+      ENDIF.
+      IF NOT gh_geral_0400[] IS INITIAL.
+        LOOP AT gh_geral_0400.
+          gh_geral_0400_aux = gh_geral_0400.
+          APPEND gh_geral_0400_aux.
+        ENDLOOP.
+      ENDIF.
+      PERFORM zf_limpa_vt.
+    ENDAT.
+  ENDLOOP.
+
+ENDFORM.                    " alimenta_tabela_dyn
+
+*---------------------------------------------------------------------*
+*       FORM clear_fs1                                                *
+*---------------------------------------------------------------------*
+*       ........                                                      *
+*---------------------------------------------------------------------*
+FORM clear_fs1.
+  DATA: x_months1(4) TYPE n,
+        x_resto1     TYPE komp-anz_monate.
+
+  CALL FUNCTION 'MONTHS_BETWEEN_TWO_DATES_NEW'
+       EXPORTING
+            i_datum_bis       = max_dmiend
+            i_datum_von       = start_date
+            i_kz_incl_bis     = 'X'
+            i_kz_volle_monate = ' '
+       IMPORTING
+            e_monate          = x_anz_monate.
+
+  MOVE x_anz_monate TO x_months1.
+
+  COMPUTE x_resto1 = frac( x_anz_monate ).
+
+  IF NOT x_resto1 IS INITIAL.
+    ADD 1 TO x_months1.
+  ENDIF.
+  MOVE start_date TO x_date.
+  DO x_months1 TIMES.
+    CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+         EXPORTING
+              months  = '1'
+              olddate = x_date
+         IMPORTING
+              newdate = x_date.
+
+    CONCATENATE x_date+4(2) '-' x_date(4) INTO x_mes_ano.
+
+    ASSIGN COMPONENT x_mes_ano OF STRUCTURE <dyn_wa> TO <fs1>.
+    CLEAR <fs1>.
+  ENDDO.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  apresenta_alv
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM apresenta_alv.
+
+  MOVE sy-repid TO gd_repid.
+
+  gd_layout-zebra             = 'X'.
+  gd_layout-colwidth_optimize = 'X'.
+* Set layout field for row attributes(i.e. color)
+  gd_layout-info_fieldname    = 'COLOR'.
+
+  IF gh_geral_0400_aux[] IS INITIAL.
+
+    CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+         EXPORTING
+              i_callback_program       = gd_repid
+*            i_callback_pf_status_set = 'SET_STATUS'
+              i_callback_user_command  = 'USER_COMMAND'
+              it_fieldcat              = fieldcat[]
+              is_layout                = gd_layout
+*            it_events               = t_alv_event[]
+*            i_grid_title             = w_titulo
+*            i_default                = 'X'
+              i_save                   = 'X'
+*            is_variant               = variante
+*            is_print                 = print
+         TABLES
+              t_outtab                 = <dyn_table>
+         EXCEPTIONS
+              program_error            = 1
+              OTHERS                   = 2.
+
+    IF sy-subrc <> 0.
+      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+  ELSE.
+    CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+          EXPORTING
+               i_callback_program       = gd_repid
+               i_callback_pf_status_set = 'ZF_STATUS'
+               i_callback_user_command  = 'USER_COMMAND'
+               it_fieldcat              = fieldcat[]
+               is_layout                = gd_layout
+*            it_events               = t_alv_event[]
+*            i_grid_title             = w_titulo
+*            i_default                = 'X'
+               i_save                   = 'X'
+*            is_variant               = variante
+*            is_print                 = print
+          TABLES
+               t_outtab                 = <dyn_table>
+          EXCEPTIONS
+               program_error            = 1
+               OTHERS                   = 2.
+
+    IF sy-subrc <> 0.
+      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+  ENDIF.
+ENDFORM.                    " apresenta_alv
+*&---------------------------------------------------------------------*
+*&      Form  user_command
+*&---------------------------------------------------------------------*
+FORM user_command USING r_ucomm LIKE sy-ucomm
+                        rs_selfield TYPE slis_selfield.
+
+* Check function code
+  CASE sy-ucomm.
+    WHEN '&EXP'.
+      PERFORM exporta_dados.
+
+    WHEN '&0400'.
+      CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+     EXPORTING
+          i_callback_program       = gd_repid
+*           i_callback_pf_status_set = 'ZF_STATUS'
+          i_callback_user_command  = 'USER_COMMAND'
+          it_fieldcat              = fieldcat_0400[]
+          is_layout                = gd_layout
+*            it_events               = t_alv_event[]
+*            i_grid_title             = w_titulo
+*            i_default                = 'X'
+          i_save                   = 'X'
+*            is_variant               = variante
+*            is_print                 = print
+     TABLES
+          t_outtab                 = <dyn_table1>
+     EXCEPTIONS
+          program_error            = 1
+          OTHERS                   = 2.
+
+      IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+
+  ENDCASE.
+ENDFORM.                    "user_command
+
+
+*---------------------------------------------------------------------*
+*       FORM zf_status                                                *
+*---------------------------------------------------------------------*
+FORM zf_status USING rt_extab TYPE slis_t_extab.
+
+
+  SET PF-STATUS 'ZSTANDARD_FULLSCREEN'.
+
+
+ENDFORM.                           " zf_status
+
+*&---------------------------------------------------------------------*
+*&      Form  exporta_dados
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM exporta_dados.
+
+  DATA: file_name TYPE string, path_name TYPE string,
+        full_path TYPE string.
+
+  CALL METHOD cl_gui_frontend_services=>file_save_dialog
+    CHANGING
+      filename             = file_name
+      path                 = path_name
+      fullpath             = full_path
+    EXCEPTIONS
+      cntl_error           = 1
+      error_no_gui         = 2
+      OTHERS               = 4.
+
+  CALL FUNCTION 'GUI_DOWNLOAD'
+        EXPORTING
+*   BIN_FILESIZE                  =
+          filename                      = full_path
+          filetype                      = 'ASC'
+*   APPEND                        = ' '
+          write_field_separator         = 'X'
+*   HEADER                        = '00'
+*   TRUNC_TRAILING_BLANKS         = ' '
+*   WRITE_LF                      = 'X'
+*   COL_SELECT                    = ' '
+*   COL_SELECT_MASK               = ' '
+*   DAT_MODE                      = ' '
+*   CONFIRM_OVERWRITE             = ' '
+*   NO_AUTH_CHECK                 = ' '
+*   CODEPAGE                      = ' '
+*   IGNORE_CERR                   = ABAP_TRUE
+*   REPLACEMENT                   = '#'
+*   WRITE_BOM                     = ' '
+* IMPORTING
+*   FILELENGTH                    =
+        TABLES
+          data_tab                      = <dyn_table>
+       EXCEPTIONS
+         file_write_error              = 1
+         no_batch                      = 2
+         gui_refuse_filetransfer       = 3
+         invalid_type                  = 4
+         no_authority                  = 5
+         unknown_error                 = 6
+         header_not_allowed            = 7
+         separator_not_allowed         = 8
+         filesize_not_allowed          = 9
+         header_too_long               = 10
+         dp_error_create               = 11
+         dp_error_send                 = 12
+         dp_error_write                = 13
+         unknown_dp_error              = 14
+         access_denied                 = 15
+         dp_out_of_memory              = 16
+         disk_full                     = 17
+         dp_timeout                    = 18
+         file_not_found                = 19
+         dataprovider_exception        = 20
+         control_flush_error           = 21
+         OTHERS                        = 22.
+
+  IF sy-subrc <> 0.
+    IF sy-msgty IS INITIAL.
+      MESSAGE e204(z3) WITH sy-subrc.
+    ELSE.
+      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+  ENDIF.
+ENDFORM.                    " exporta_dados
+**&---------------------------------------------------------------------
+**
+**&      Form  dguel_ht
+**&---------------------------------------------------------------------
+**
+**       text
+**----------------------------------------------------------------------
+**
+**      -->P_T_ZCONDSNAPSHOTS_OLD  text
+**----------------------------------------------------------------------
+**
+*FORM dguel_ht TABLES    p_t_zcondsnapshots_old.
+*  SORT p_t_zcondsnapshots_old BY intreno skoart dguel_kp DESCENDING.
+*
+*  CLEAR: t_skoart, t_intreno, t_dguel_kp.
+*
+*  LOOP AT p_t_zcondsnapshots_old.
+*    IF t_intreno IS INITIAL.
+*      MOVE p_t_zcondsnapshots_old-intreno TO t_intreno.
+*    ENDIF.
+*
+*    IF t_intreno NE p_t_zcondsnapshots_old-intreno OR t_skoart NE
+*p_t_zcondsnapshots_old-skoart.
+*      READ TABLE t_vimimv WITH KEY intreno =
+*p_t_zcondsnapshots_old-intreno.
+*      IF sy-subrc EQ 0.
+*        MOVE t_vimimv-dmiend TO p_t_zcondsnapshots_old-dguel_ht.
+*      ENDIF.
+*    ENDIF.
+*
+*    IF t_intreno EQ t_vzzkopo-intreno AND t_skoart EQ
+*p_t_zcondsnapshots_old-skoart.
+*      MOVE t_dguel_kp TO  p_t_zcondsnapshots_old-dguel_ht.
+*    ENDIF.
+*    MODIFY p_t_zcondsnapshots_old.
+*
+*    MOVE p_t_zcondsnapshots_old-skoart TO t_skoart.
+*    MOVE p_t_zcondsnapshots_old-intreno TO t_intreno.
+*    MOVE p_t_zcondsnapshots_old-dguel_kp TO t_dguel_kp.
+*  ENDLOOP.
+*
+*ENDFORM.                    " dguel_ht
+*&---------------------------------------------------------------------*
+*&      Form  z_constroi_fieldcat
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM z_constroi_fieldcat.
+  DATA: flds_count TYPE i,
+         cnt TYPE i.
+  DATA: t_datec(8) TYPE c.
+  DATA: t_date LIKE sy-datum.
+* WO 2161 <<<
+  DATA: x_resto TYPE komp-anz_monate.
+
+* WO 2161 >>>
+  CLEAR flds_count.
+  x_months = gi_linha.
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'BUKRS'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'CHAR'.
+  wa_it_fldcat_0400-intlen = 4.
+  wa_it_fldcat_0400-outputlen = 4.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'BUKRS'  '' ''  '<dyn_table1>' '' 'Empresa' '' '' '' '' ''
+''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'SWENR'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'CHAR'.
+  wa_it_fldcat_0400-intlen = 8.
+  wa_it_fldcat_0400-outputlen = 8.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+  PERFORM monta_fieldcat_0400 USING:
+flds_count   'SWENR'  '' ''  '<dyn_table1>' '' 'Unidade Económica' '' ''
+'' '' '' '' ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'SMIVE'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'CHAR'.
+  wa_it_fldcat_0400-intlen = 13.
+  wa_it_fldcat_0400-outputlen = 13.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'SMIVE'  '' ''  '<dyn_table1>'
+'' 'Contrato' '' '' '' '' '' ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'SMENR'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'CHAR'.
+  wa_it_fldcat_0400-intlen = 8.
+  wa_it_fldcat_0400-outputlen = 8.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'SMENR'  '' ''  '<dyn_table1>' '' 'Loja' '' '' '' '' '' ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'ZZNMFAN'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'CHAR'.
+  wa_it_fldcat_0400-intlen = 40.
+  wa_it_fldcat_0400-outputlen = 40.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'ZZNMFAN'  '' ''  '<dyn_table1>' '' 'Nome Fantasia' '' ''
+''
+ '' '' ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'ALT'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'CHAR'.
+  wa_it_fldcat_0400-intlen = 3.
+  wa_it_fldcat_0400-outputlen = 3.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'ALT'  '' ''  '<dyn_table1>' '' 'Alteração' '' '' '' '' ''
+''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'DMIBEG'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'DATS'.
+  wa_it_fldcat_0400-intlen = 8.
+  wa_it_fldcat_0400-outputlen = 8.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'DMIBEG'  '' ''  '<dyn_table1>' ''
+'Data Inicio de Contrato'
+ '' '' ''
+''
+ '' ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'DMIEND'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'DATS'.
+  wa_it_fldcat_0400-intlen = 8.
+  wa_it_fldcat_0400-outputlen = 8.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'DMIEND'  '' ''  '<dyn_table1>' '' 'Data Fim de Contrato'
+''
+ '' '' ''
+''
+ ''.
+
+* WO 2213 <<<
+*  ADD 1 TO flds_count.
+*  wa_it_fldcat-fieldname = 'LAST_ACT'.
+*  wa_it_fldcat-col_pos = flds_count.
+*  wa_it_fldcat-datatype = 'DATS'.
+*  wa_it_fldcat-intlen = 8.
+*  wa_it_fldcat-outputlen = 8.
+*  APPEND wa_it_fldcat TO it_fldcat.
+*
+*  PERFORM monta_fieldcat USING :
+*flds_count   'LAST_ACT'  '' ''  '<dyn_table>' '' 'Ultima Actualização'
+*'' '' '' '' ''
+* ''.
+* WO 2213 >>>
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'P_DATE_N'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'DATS'.
+  wa_it_fldcat_0400-intlen = 8.
+  wa_it_fldcat_0400-outputlen = 8.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'P_DATE_N'  '' ''  '<dyn_table1>' '' 'Data Referência' ''
+''
+ '' '' ''
+ ''.
+
+* WO 2213 <<<
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'LAST_ACT'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'DATS'.
+  wa_it_fldcat_0400-intlen = 8.
+  wa_it_fldcat_0400-outputlen = 8.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'LAST_ACT'  '' ''  '<dyn_table1>' '' 'Ultima Actualização
+de
+ renda'
+'' '' '' '' ''
+ ''.
+* WO 2213 >>>
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'BKOND'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-currency = 'BRL'.
+  wa_it_fldcat_0400-datatype = 'CURR'.
+  wa_it_fldcat_0400-outputlen = 20.
+  wa_it_fldcat_0400-intlen = 15.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400 .
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'BKOND'  '' ''  '<dyn_table1>' '' 'Fact. Data Ref.' '' ''
+''
+'' ''
+''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'MONAT'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'CHAR'.
+  wa_it_fldcat_0400-intlen = 4.
+  wa_it_fldcat_0400-outputlen = 4.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'MONAT'  '' ''  '<dyn_table1>' '' 'Meses Contrato'
+'' '' '' '' '' ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'LINEAR'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-currency = 'BRL'.
+  wa_it_fldcat_0400-datatype = 'CURR'.
+  wa_it_fldcat_0400-outputlen = 20.
+  wa_it_fldcat_0400-intlen = 15.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400 .
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'LINEAR'  '' ''  '<dyn_table1>' '' 'Renda Linearizada' ''
+'' ''
+'' ''
+''.
+
+* WO 2161 <<<
+*  ADD 1 TO flds_count.
+*  wa_it_fldcat-fieldname = 'DELTA'.
+*  wa_it_fldcat-col_pos = flds_count.
+*  wa_it_fldcat-currency = 'BRL'.
+*  wa_it_fldcat-datatype = 'CURR'.
+*  wa_it_fldcat-outputlen = 20.
+*  wa_it_fldcat-intlen = 15.
+*  APPEND wa_it_fldcat TO it_fldcat .
+*
+*  PERFORM monta_fieldcat USING :
+*flds_count   'DELTA'  '' ''  '<dyn_table>' '' 'Renda Lin. Ult. Act.' ''
+*'' ''
+*'' ''
+*''.
+* WO 2161 >>>
+
+* WO 2187 <<<
+*  ADD 1 TO flds_count.
+*  wa_it_fldcat-fieldname = 'CONTROL'.
+*  wa_it_fldcat-col_pos = flds_count.
+*  wa_it_fldcat-currency = 'BRL'.
+*  wa_it_fldcat-datatype = 'CURR'.
+*  wa_it_fldcat-outputlen = 20.
+*  wa_it_fldcat-intlen = 15.
+*  APPEND wa_it_fldcat TO it_fldcat .
+*
+*  PERFORM monta_fieldcat USING :
+*flds_count   'CONTROL'  '' ''  '<dyn_table>' '' 'Controlo' '' '' ''
+*'' ''
+*''.
+* WO 2187 >>>
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'USR10'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'CHAR'.
+  wa_it_fldcat_0400-intlen = 3.
+  wa_it_fldcat_0400-outputlen = 3.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'USR10'  '' ''  '<dyn_table1>' '' '2x Dez.' '' '' '' '' ''
+''.
+
+* WO 2213 <<<
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'ESP_COND'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'CHAR'.
+  wa_it_fldcat_0400-intlen = 3.
+  wa_it_fldcat_0400-outputlen = 3.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'ESP_COND'  '' ''  '<dyn_table1>'
+'' 'Condição Especial' '' '' '' '' '' ''.
+* WO 2213 >>>
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'MONTHS'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'CHAR'.
+  wa_it_fldcat_0400-intlen = 4.
+  wa_it_fldcat_0400-outputlen = 4.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'MONTHS'  '' ''  '<dyn_table1>'
+'' 'Meses a Facturar' '' '' '' '' '' ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'COLOR'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'CHAR'.
+  wa_it_fldcat_0400-intlen = 4.
+  wa_it_fldcat_0400-outputlen = 4.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'RTYPE'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'CHAR'.
+  wa_it_fldcat_0400-intlen = 3.
+  wa_it_fldcat_0400-outputlen = 3.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'RTYPE'  '' ''  '<dyn_table1>' '' 'Tipo de Renda' '' '' ''
+'' ''
+''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'LAST_MOD'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'DATS'.
+  wa_it_fldcat_0400-intlen = 8.
+  wa_it_fldcat_0400-outputlen = 8.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'LAST_MOD'  '' ''  '<dyn_table1>' '' 'Ultima Modifição'
+'' '' '' '' ''
+ ''.
+
+  ADD 1 TO flds_count.
+  wa_it_fldcat_0400-fieldname = 'CREATE_DATE'.
+  wa_it_fldcat_0400-col_pos = flds_count.
+  wa_it_fldcat_0400-datatype = 'DATS'.
+  wa_it_fldcat_0400-intlen = 8.
+  wa_it_fldcat_0400-outputlen = 8.
+  APPEND wa_it_fldcat_0400 TO it_fldcat_0400.
+
+  PERFORM monta_fieldcat_0400 USING :
+flds_count   'CREATE_DATE'  '' ''  '<dyn_table1>' '' 'Data Criação'
+'' '' '' '' ''
+ ''.
+
+
+*  CALL FUNCTION 'MONTHS_BETWEEN_TWO_DATES_NEW'
+*       EXPORTING
+*            i_datum_bis       = max_dmiend
+*            i_datum_von       = start_date
+*            i_kz_incl_bis     = 'X'
+*            i_kz_volle_monate = ' '
+*       IMPORTING
+*            e_monate          = x_anz_monate.
+*
+*  ADD 1 TO flds_count.
+*
+** WO 2161 <<<
+*  MOVE x_anz_monate TO x_months.
+*
+*  COMPUTE x_resto = frac( x_anz_monate ).
+*
+*  IF NOT x_resto IS INITIAL.
+*    ADD 1 TO x_months.
+*  ENDIF.
+** WO 2161 >>>
+  start_date = gh_geral_0400-data.
+  DO x_months TIMES.
+    CLEAR wa_it_fldcat_0400.
+
+    CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+         EXPORTING
+              months  = cnt
+              olddate = start_date
+         IMPORTING
+              newdate = x_date.
+
+
+    CONCATENATE x_date+4(2) '-' x_date(4) INTO x_mes_ano.
+    WRITE x_mes_ano TO wa_it_fldcat_0400-fieldname.
+
+    gc_mes_ano_aux = x_mes_ano.
+
+    wa_it_fldcat_0400-col_pos = flds_count.
+    wa_it_fldcat_0400-currency = 'BRL'.
+    wa_it_fldcat_0400-datatype = 'CURR'.
+    wa_it_fldcat_0400-outputlen = 20.
+    wa_it_fldcat_0400-intlen = 15.
+    APPEND wa_it_fldcat_0400 TO it_fldcat_0400 .
+
+    PERFORM monta_fieldcat_0400 USING:
+    flds_count   wa_it_fldcat_0400-fieldname  '' ''  '<dyn_table1>' ''
+  x_mes_ano
+   '' '' '' '' '' ''.
+
+    ADD 1 TO flds_count.
+    ADD 1 TO cnt.
+    IF cnt GT 245.
+      EXIT.
+    ENDIF.
+  ENDDO.
+
+  CALL METHOD cl_alv_table_create=>create_dynamic_table
+               EXPORTING
+                  it_fieldcatalog = it_fldcat_0400
+               IMPORTING
+                  ep_table        = new_table.
+
+  ASSIGN new_table->* TO <dyn_table1>.
+
+ENDFORM.                    " z_constroi_fieldcat
+*&---------------------------------------------------------------------*
+*&      Form  monta_fieldcat
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_FLDS_COUNT  text
+*      -->P_0793   text
+*      -->P_0794   text
+*      -->P_0795   text
+*      -->P_0796   text
+*      -->P_0797   text
+*      -->P_0798   text
+*      -->P_0799   text
+*      -->P_0800   text
+*      -->P_0801   text
+*      -->P_0802   text
+*      -->P_0803   text
+*      -->P_0804   text
+*----------------------------------------------------------------------*
+FORM monta_fieldcat_0400 USING    i_col_pos         TYPE any
+                             i_fieldname       TYPE any
+                             i_ref_fieldname   TYPE any
+                             i_ref_tabname     TYPE any
+                             i_tabname         TYPE any
+                             i_key             TYPE any
+                             i_text            TYPE any
+                             i_checkbox        TYPE any
+                             i_edit            TYPE any
+                             i_no_out          TYPE any
+                             i_hotspot         TYPE any
+                             i_sum             TYPE any
+                             i_inttype         TYPE any.
+
+  CLEAR fieldcat.
+
+  fieldcat_0400-col_pos       = i_col_pos.
+  fieldcat_0400-fieldname     = i_fieldname.
+  fieldcat_0400-ref_fieldname = i_ref_fieldname.
+  fieldcat_0400-ref_tabname   = i_ref_tabname.
+  fieldcat_0400-tabname       = i_tabname.
+  fieldcat_0400-key           = i_key.
+  fieldcat_0400-reptext_ddic  = i_text.
+  fieldcat_0400-checkbox      = i_checkbox.
+  fieldcat_0400-edit          = i_edit.
+  fieldcat_0400-no_out        = i_no_out.
+  fieldcat_0400-hotspot       = i_hotspot.
+  fieldcat_0400-do_sum        = i_sum.
+  fieldcat_0400-inttype       = i_inttype.
+
+  APPEND fieldcat_0400.
+  CLEAR fieldcat_0400.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  zf_limpa_vt
+*&---------------------------------------------------------------------*
+FORM zf_limpa_vt.
+
+  CLEAR: <fs1>, <dyn_wa>, gc_total_bkond,
+  w_total, gh_geral_aux[], gh_geral[],
+  gc_cond_mist, gc_valor_percentual, gc_controla_12, lc_ano,
+  gc_valor_percentual_, x_mes_ano_aux, x_mes_ano, w_vimimv, gc_cont_mes,
+  gi_tabix, gc_percentual, gc_contador, gc_vlr_perc_mes,
+  gc_valor_total_prc, gc_valor_inicial_mes,  gh_geral_0400,
+   wa_it_fldcat_0400, w_zcondsnapshots_aux, gc_valor_geral, gh_geral,
+   gh_indice_aux, gh_indice_aux[], gh_indice, gh_indice[], gh_vimi55_aux
+, gc_media, gh_geral_0400[], gh_geral_0400.
+
+ENDFORM.                    " zf_limpa_vt
